@@ -1,4 +1,5 @@
-echo ".DS_Store
+.DS_Store
 build/
 DerivedData/
-*.xcuserstate" > .gitignore
+*.xcuserstate
+xcuserdata/

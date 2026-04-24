@@ -857,10 +857,18 @@ struct PlayerRegistrationView: View {
     @Binding var navPath: NavigationPath
     @State private var showAddPlayer = false
     @State private var showFinishAlert = false
+    // ロスター選手タップ時の「スタメン/ベンチ」選択用
+    @State private var pendingRosterPlayer: RosterPlayer? = nil
 
     var match: Match { appState.matches.first(where:{$0.id==matchId}) ?? Match(opponent:"") }
     var starters: [Player] { match.players.filter{$0.isStarter} }
     var bench:    [Player] { match.players.filter{!$0.isStarter} }
+
+    // 既に試合に追加済みのロスター選手を除外して、追加可能なロスターを返す
+    var availableRoster: [RosterPlayer] {
+        let addedRosterIds = Set(match.players.compactMap { $0.rosterId })
+        return appState.sortedRoster.filter { !addedRosterIds.contains($0.id) }
+    }
 
     var body: some View {
         ZStack(alignment:.bottom) {
@@ -888,6 +896,33 @@ struct PlayerRegistrationView: View {
                         }
                     }.padding(.vertical,4).listRowBackground(Color(.secondarySystemBackground))
                 }
+
+                // ── ロスターから追加セクション ──
+                if !availableRoster.isEmpty {
+                    Section {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(availableRoster) { rp in
+                                    Button {
+                                        pendingRosterPlayer = rp
+                                    } label: {
+                                        RosterPickerChip(player: rp)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+                    } header: {
+                        Label("ロスターから追加 (\(availableRoster.count)名)", systemImage: "person.3.fill")
+                            .foregroundColor(.blue)
+                    } footer: {
+                        Text("タップしてスタメン/ベンチを選択")
+                            .font(.caption2)
+                    }
+                }
+
                 Section {
                     if starters.isEmpty { Text("先発選手を追加してください").foregroundColor(.secondary).italic() }
                     else { ForEach(starters) { PlayerRegRow(player:$0) }.onDelete { deletePlayer(at:$0,isStarter:true) } }
@@ -906,7 +941,7 @@ struct PlayerRegistrationView: View {
 
             HStack(spacing:12) {
                 Button { showAddPlayer = true } label: {
-                    Label("選手を追加",systemImage:"person.badge.plus").font(.headline.weight(.bold)).padding(.vertical,16)
+                    Label("新規選手を追加",systemImage:"person.badge.plus").font(.headline.weight(.bold)).padding(.vertical,16)
                         .frame(maxWidth:.infinity).background(.blue).foregroundColor(.white).clipShape(RoundedRectangle(cornerRadius:14))
                 }
                 Button { showFinishAlert = true } label: {
@@ -917,9 +952,41 @@ struct PlayerRegistrationView: View {
         }
         .sheet(isPresented:$showAddPlayer) {
             AddPlayerSheet { name,pos,height,foot,isStarter in
-                var p = Player(name:name,position:pos,isStarter:isStarter); p.height=height; p.foot=foot
+                // ① ロスターにも自動登録（スナップショット方式）
+                let rosterPlayer = RosterPlayer(
+                    name: name,
+                    position: pos,
+                    height: height,
+                    foot: foot
+                )
+                appState.addRosterPlayer(rosterPlayer)
+
+                // ② 試合にも追加（rosterIdで紐付け）
+                let p = Player.from(roster: rosterPlayer, isStarter: isStarter)
                 var m = match; m.players.append(p); appState.updateMatch(m)
             }
+        }
+        .confirmationDialog(
+            "「\(pendingRosterPlayer?.name ?? "")」を追加",
+            isPresented: Binding(
+                get: { pendingRosterPlayer != nil },
+                set: { if !$0 { pendingRosterPlayer = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("スタメンに追加") {
+                if let rp = pendingRosterPlayer {
+                    addRosterPlayerToMatch(rp, isStarter: true)
+                }
+                pendingRosterPlayer = nil
+            }
+            Button("ベンチに追加") {
+                if let rp = pendingRosterPlayer {
+                    addRosterPlayerToMatch(rp, isStarter: false)
+                }
+                pendingRosterPlayer = nil
+            }
+            Button("キャンセル", role: .cancel) { pendingRosterPlayer = nil }
         }
         .alert("試合を終了しますか？",isPresented:$showFinishAlert) {
             Button("終了する",role:.destructive) { appState.finishMatch(matchId); dismiss() }
@@ -927,10 +994,64 @@ struct PlayerRegistrationView: View {
         } message: { Text("試合終了後はスタッツの編集ができません") }
     }
 
+    private func addRosterPlayerToMatch(_ rp: RosterPlayer, isStarter: Bool) {
+        let p = Player.from(roster: rp, isStarter: isStarter)
+        var m = match
+        m.players.append(p)
+        appState.updateMatch(m)
+    }
+
     private func deletePlayer(at offsets:IndexSet, isStarter:Bool) {
         let group = isStarter ? starters : bench
         let ids = offsets.map { group[$0].id }
         var m = match; m.players.removeAll { ids.contains($0.id) }; appState.updateMatch(m)
+    }
+}
+
+// ── ロスター選手ピッカー用チップ（選手登録画面の横スクロール） ──
+struct RosterPickerChip: View {
+    let player: RosterPlayer
+    var body: some View {
+        VStack(spacing: 4) {
+            ZStack {
+                Circle()
+                    .fill(LinearGradient(
+                        colors: [player.position.color, player.position.color.opacity(0.7)],
+                        startPoint: .top, endPoint: .bottom
+                    ))
+                    .frame(width: 46, height: 46)
+                    .shadow(color: player.position.color.opacity(0.35), radius: 3, x: 0, y: 2)
+                Image(systemName: player.position.icon)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                // + 追加の小バッジ
+                VStack {
+                    HStack {
+                        Spacer()
+                        ZStack {
+                            Circle().fill(Color.blue)
+                                .frame(width: 16, height: 16)
+                            Image(systemName: "plus")
+                                .font(.system(size: 10, weight: .black))
+                                .foregroundColor(.white)
+                        }
+                        .offset(x: 4, y: -4)
+                    }
+                    Spacer()
+                }
+                .frame(width: 46, height: 46)
+            }
+            Text(player.name)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.primary)
+                .lineLimit(1)
+                .frame(width: 62)
+            Text(player.position.label)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(player.position.color)
+        }
+        .frame(width: 66)
+        .padding(.vertical, 4)
     }
 }
 
