@@ -66,7 +66,7 @@ struct HexButtonMenu: View {
                     ], color:Color.green)
                 ]
             ),
-            // ② PASS（右上） — タップ=パスのみ、フリック=Assist/KeyPass/LongPass（全てパス+1）
+            // ② PASS（右上 θ=30°） — フリックは外側(0°〜60°)へ扇状展開
             HexButtonConfig(
                 id: "pass", label: "PASS", subtitle: "パス",
                 icon: "arrow.triangle.swap",
@@ -75,12 +75,12 @@ struct HexButtonMenu: View {
                 tapEffects: [StatEffect(keyPath:\.avgP, delta:1)],
                 tapIsSubMenu: false,
                 flickOptions: [
-                    FlickOption(label:"Assist", angleDeg:90, effects:[
+                    FlickOption(label:"Assist", angleDeg:60, effects:[
                         StatEffect(keyPath:\.avgP,    delta:1),
                         StatEffect(keyPath:\.keyP,    delta:1),
                         StatEffect(keyPath:\.assists, delta:1)
                     ], color:Color.yellow),
-                    FlickOption(label:"Key Pass", angleDeg:180, effects:[
+                    FlickOption(label:"Key Pass", angleDeg:30, effects:[
                         StatEffect(keyPath:\.avgP, delta:1),
                         StatEffect(keyPath:\.keyP, delta:1)
                     ], color:Color.cyan),
@@ -90,7 +90,7 @@ struct HexButtonMenu: View {
                     ], color:Color.orange)
                 ]
             ),
-            // ③ DRIBBLE（右下） — フリック3択：成功 / ロスト / ミスタッチ
+            // ③ DRIBBLE（右下 θ=-30°） — 外側(0°〜-60°)へ扇状展開
             HexButtonConfig(
                 id: "dribble", label: "DRIBBLE", subtitle: "ドリブル",
                 icon: "figure.run",
@@ -99,18 +99,18 @@ struct HexButtonMenu: View {
                 tapEffects: nil,
                 tapIsSubMenu: false,
                 flickOptions: [
-                    FlickOption(label:"成功", angleDeg:90, effects:[
+                    FlickOption(label:"成功", angleDeg:0, effects:[
                         StatEffect(keyPath:\.drbOff, delta:1)
                     ], color:Color.green),
-                    FlickOption(label:"ロスト", angleDeg:-90, effects:[
-                        StatEffect(keyPath:\.disp, delta:1)
-                    ], color:Color.red),
-                    FlickOption(label:"ミスタッチ", angleDeg:180, effects:[
+                    FlickOption(label:"ミスタッチ", angleDeg:-30, effects:[
                         StatEffect(keyPath:\.unsTch, delta:1)
-                    ], color:Color.orange)
+                    ], color:Color.orange),
+                    FlickOption(label:"ロスト", angleDeg:-60, effects:[
+                        StatEffect(keyPath:\.disp, delta:1)
+                    ], color:Color.red)
                 ]
             ),
-            // ④ BLOCK（下） — フリック2択：Block / Clear
+            // ④ BLOCK（下 θ=-90°） — 外側(-60°/-120°)へ展開
             HexButtonConfig(
                 id: "block", label: "BLOCK", subtitle: "ブロック",
                 icon: "rectangle.fill",
@@ -119,15 +119,15 @@ struct HexButtonMenu: View {
                 tapEffects: nil,
                 tapIsSubMenu: false,
                 flickOptions: [
-                    FlickOption(label:"Block", angleDeg:90, effects:[
+                    FlickOption(label:"Block", angleDeg:-60, effects:[
                         StatEffect(keyPath:\.blocks, delta:1)
                     ], color:Color.cyan),
-                    FlickOption(label:"Clear", angleDeg:180, effects:[
+                    FlickOption(label:"Clear", angleDeg:-120, effects:[
                         StatEffect(keyPath:\.clear, delta:1)
                     ], color:Color.yellow)
                 ]
             ),
-            // ⑤ DEFENSE（左下） — タップ=Inter単独、フリック=Inter+追加（タックル/抜かれ）
+            // ⑤ DEFENSE（左下 θ=-150°） — 外側(-120°/-180°)へ展開
             HexButtonConfig(
                 id: "defense", label: "DEFENSE", subtitle: "守備",
                 icon: "shield.fill",
@@ -136,11 +136,11 @@ struct HexButtonMenu: View {
                 tapEffects: [StatEffect(keyPath:\.inter, delta:1)],
                 tapIsSubMenu: false,
                 flickOptions: [
-                    FlickOption(label:"+ Tackle", angleDeg:90, effects:[
+                    FlickOption(label:"+ Tackle", angleDeg:-120, effects:[
                         StatEffect(keyPath:\.inter,   delta:1),
                         StatEffect(keyPath:\.tackles, delta:1)
                     ], color:Color.indigo),
-                    FlickOption(label:"+ 抜かれ", angleDeg:-90, effects:[
+                    FlickOption(label:"+ 被ドリブル", angleDeg:180, effects:[
                         StatEffect(keyPath:\.inter,  delta:1),
                         StatEffect(keyPath:\.drbDef, delta:1)
                     ], color:Color.red)
@@ -223,11 +223,25 @@ struct HexButtonMenu: View {
                             withAnimation { subMenuOpen = false }
                         },
                         onCardChange: { isYellow, delta in
-                            let kp: WritableKeyPath<PlayerStats, Int> = isYellow ? \.yellowCards : \.redCards
-                            let maxVal = isYellow ? 2 : 1   // イエロー上限2、レッド上限1
-                            let proposed = player.stats[keyPath: kp] + delta
-                            let newVal = max(0, min(maxVal, proposed))
-                            player.stats[keyPath: kp] = newVal
+                            // 状態は (Y=0,R=0) / (Y=1,R=0) / (Y=0,R=1) の3種のみ
+                            // ・Y=1で+Yellow → 自動で (Y=0,R=1) に変換
+                            // ・R=1 では全ての追加が不可（呼び出し元で disabled）
+                            var y = player.stats.yellowCards
+                            var r = player.stats.redCards
+                            if isYellow {
+                                let newY = max(0, y + delta)
+                                if newY >= 2 {
+                                    y = 0; r = 1   // 2枚目で強制的にレッド化
+                                } else {
+                                    y = newY
+                                }
+                            } else {
+                                r = max(0, min(1, r + delta))
+                            }
+                            // レッドが付いたらイエローは保持しない
+                            if r >= 1 { y = 0 }
+                            player.stats.yellowCards = y
+                            player.stats.redCards    = r
                             UISelectionFeedbackGenerator().selectionChanged()
                         },
                         onCancel: {
@@ -562,10 +576,22 @@ struct SubstitutionMenuView: View {
                     .foregroundColor(.white.opacity(0.95))
             }
 
-            // ── カード（イエロー上限2 / レッド上限1） ──
+            // ── カード（Y=1で+YでR化／R=1なら全+不可） ──
             HStack(spacing: 18) {
-                cardCounter(isYellow: true,  count: player.stats.yellowCards, maxCount: 2)
-                cardCounter(isYellow: false, count: player.stats.redCards,    maxCount: 1)
+                // Y側：レッドが無い時のみ+可能（タップ時にY=1なら自動R化）
+                cardCounter(
+                    isYellow: true,
+                    count: player.stats.yellowCards,
+                    canAdd: player.stats.redCards == 0,
+                    canRemove: player.stats.yellowCards > 0
+                )
+                // R側：レッドが0の時のみ+可能
+                cardCounter(
+                    isYellow: false,
+                    count: player.stats.redCards,
+                    canAdd: player.stats.redCards == 0,
+                    canRemove: player.stats.redCards > 0
+                )
             }
 
             Rectangle().fill(Color.white.opacity(0.18)).frame(height: 1)
@@ -576,7 +602,16 @@ struct SubstitutionMenuView: View {
                     .font(.system(size:11, weight:.semibold))
                     .foregroundColor(.white.opacity(0.8))
                     .lineLimit(1).minimumScaleFactor(0.7)
-                if player.wasSubstituted {
+                if player.stats.redCards >= 1 {
+                    // レッドカード保持者は退場のため交代不可（人数を1人減らした状態でプレー）
+                    HStack {
+                        Image(systemName:"xmark.octagon.fill").foregroundColor(.red)
+                        Text("レッドカードのため交代できません（退場）")
+                            .font(.system(size:11))
+                            .foregroundColor(.white.opacity(0.75))
+                    }
+                    .padding(.vertical, 8).frame(maxWidth: .infinity)
+                } else if player.wasSubstituted {
                     // この画面のplayerは交代でINしてきた選手等。OUT済みの選手はそもそもベンチ表示しない仕様だが念のため。
                     HStack {
                         Image(systemName:"lock.fill").foregroundColor(.orange)
@@ -649,28 +684,21 @@ struct SubstitutionMenuView: View {
     }
 
     @ViewBuilder
-    private func cardCounter(isYellow: Bool, count: Int, maxCount: Int) -> some View {
-        let isAtMax = count >= maxCount
-        let isAtMin = count <= 0
+    private func cardCounter(isYellow: Bool, count: Int, canAdd: Bool, canRemove: Bool) -> some View {
         VStack(spacing: 4) {
             Rectangle()
                 .fill(isYellow ? Color.yellow : Color.red)
                 .frame(width: 22, height: 30)
                 .cornerRadius(2)
-                .shadow(color:.black.opacity(0.4), radius:2)
-                .overlay(
-                    Text("\(count)/\(maxCount)")
-                        .font(.system(size:8, weight:.heavy))
-                        .foregroundColor(.black.opacity(0.7))
-                        .offset(y: 18)
-                )
+                .opacity(count > 0 ? 1.0 : 0.30)   // 持っていなければ半透明
+                .shadow(color: .black.opacity(0.4), radius: 2)
             HStack(spacing: 6) {
                 Button { onCardChange(isYellow, -1) } label: {
                     Image(systemName:"minus.circle.fill")
                         .font(.system(size: 22))
-                        .foregroundColor(.white.opacity(isAtMin ? 0.25 : 0.85))
+                        .foregroundColor(.white.opacity(canRemove ? 0.85 : 0.20))
                 }
-                .disabled(isAtMin)
+                .disabled(!canRemove)
                 Text("\(count)")
                     .font(.system(size: 18, weight:.heavy, design:.rounded))
                     .foregroundColor(.white)
@@ -678,13 +706,12 @@ struct SubstitutionMenuView: View {
                 Button { onCardChange(isYellow, 1) } label: {
                     Image(systemName:"plus.circle.fill")
                         .font(.system(size: 22))
-                        .foregroundColor(.white.opacity(isAtMax ? 0.25 : 0.95))
+                        .foregroundColor(.white.opacity(canAdd ? 0.95 : 0.20))
                 }
-                .disabled(isAtMax)
+                .disabled(!canAdd)
             }
         }
         .padding(.vertical, 4).padding(.horizontal, 10)
-        .padding(.top, 8)
         .background(
             RoundedRectangle(cornerRadius: 10, style:.continuous)
                 .fill(Color.white.opacity(0.06))

@@ -98,12 +98,17 @@ struct StatsCollectionView: View {
                    let mi = matchIndex,
                    let pi = appState.matches[mi].players.firstIndex(where:{$0.id==pid}) {
 
+                    // 背景の暗幕は選手アイコン(zIndex 1〜10)より上、メニュー(zIndex 1000)より下
                     Color.black.opacity(0.70).ignoresSafeArea()
                         .onTapGesture { withAnimation { selectedPlayerId = nil } }
+                        .zIndex(900)
 
                     HexButtonMenu(
                         player: $appState.matches[mi].players[pi],
-                        bench: appState.matches[mi].players.filter { !$0.isStarter && !$0.wasSubstituted },
+                        // ベンチ：交代済み・レッドカード保持者は除外
+                        bench: appState.matches[mi].players.filter {
+                            !$0.isStarter && !$0.wasSubstituted && $0.stats.redCards == 0
+                        },
                         onSubstitute: { benchId in
                             appState.substitutePlayer(matchId: matchId, outId: pid, inId: benchId)
                             // 交代後はラジアルメニューを閉じる
@@ -115,6 +120,7 @@ struct StatsCollectionView: View {
                         insertion:.scale(scale:0.4).combined(with:.opacity),
                         removal:.scale(scale:0.4).combined(with:.opacity)
                     ))
+                    .zIndex(1000)   // 選手アイコンより常に上に表示
                 }
             }
         }

@@ -105,7 +105,7 @@ struct PlayerRegistrationView: View {
             }.padding(.horizontal,20).padding(.vertical,12).background(.ultraThinMaterial)
         }
         .sheet(isPresented:$showAddPlayer) {
-            AddPlayerSheet { name,pos,height,foot,isStarter in
+            AddPlayerSheet(canAddStarter: starters.count < 11) { name,pos,height,foot,isStarter in
                 // ① ロスターにも自動登録（スナップショット方式）
                 let rosterPlayer = RosterPlayer(
                     name: name,
@@ -116,7 +116,9 @@ struct PlayerRegistrationView: View {
                 appState.addRosterPlayer(rosterPlayer)
 
                 // ② 試合にも追加（rosterIdで紐付け）
-                let p = Player.from(roster: rosterPlayer, isStarter: isStarter)
+                // スタメン上限(11名)に達している場合は強制的にベンチへ
+                let actualIsStarter = isStarter && starters.count < 11
+                let p = Player.from(roster: rosterPlayer, isStarter: actualIsStarter)
                 var m = match; m.players.append(p); appState.updateMatch(m)
             }
         }
@@ -128,11 +130,14 @@ struct PlayerRegistrationView: View {
             ),
             titleVisibility: .visible
         ) {
-            Button("スタメンに追加") {
-                if let rp = pendingRosterPlayer {
-                    addRosterPlayerToMatch(rp, isStarter: true)
+            // スタメン上限(11名)に達していない時のみスタメン追加可
+            if starters.count < 11 {
+                Button("スタメンに追加") {
+                    if let rp = pendingRosterPlayer {
+                        addRosterPlayerToMatch(rp, isStarter: true)
+                    }
+                    pendingRosterPlayer = nil
                 }
-                pendingRosterPlayer = nil
             }
             Button("ベンチに追加") {
                 if let rp = pendingRosterPlayer {
@@ -238,11 +243,12 @@ struct PlayerRegRow: View {
 // ============================================================
 
 struct AddPlayerSheet: View {
+    var canAddStarter: Bool = true
     let onConfirm: (String, Position, String, Foot, Bool) -> Void
     @Environment(\.dismiss) var dismiss
     @State private var name = ""; @State private var position: Position = .fw
     @State private var height = ""; @State private var foot: Foot = .right
-    @State private var isStarter = true
+    @State private var isStarter: Bool = true
     @FocusState private var focusedField: String?
     var canRegister: Bool { !name.trimmingCharacters(in:.whitespaces).isEmpty }
 
@@ -283,7 +289,16 @@ struct AddPlayerSheet: View {
                     }
                 }
                 Section("出場区分") {
-                    Picker("区分",selection:$isStarter) { Text("スタメン").tag(true); Text("ベンチ").tag(false) }.pickerStyle(.segmented)
+                    if canAddStarter {
+                        Picker("区分",selection:$isStarter) { Text("スタメン").tag(true); Text("ベンチ").tag(false) }.pickerStyle(.segmented)
+                    } else {
+                        HStack {
+                            Image(systemName: "info.circle.fill").foregroundColor(.orange)
+                            Text("スタメンは11名に達しているためベンチに登録されます")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
                 }
             }
         }

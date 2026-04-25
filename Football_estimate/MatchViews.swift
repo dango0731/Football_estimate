@@ -32,7 +32,7 @@ struct MatchRowCard: View {
                         .foregroundColor(match.isFinished ? .green : .orange).clipShape(Capsule())
                 }
             }
-            Image(systemName:"chevron.right").font(.caption.weight(.semibold)).foregroundColor(.secondary.opacity(0.4))
+            Image(systemName:"chevron.right").font(.caption.weight(.semibold)).foregroundColor(Color.secondary.opacity(0.4))
         }
         .padding(16).background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius:16,style:.continuous))
