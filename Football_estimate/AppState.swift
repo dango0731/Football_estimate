@@ -9,6 +9,38 @@ class AppState: ObservableObject {
     @Published var matches: [Match] = []
     @Published var roster: [RosterPlayer] = []   // マスターロスター
 
+    init() {
+        // 起動時、ロスターが空なら時短用のサンプル15人を投入。
+        // 不要になったらロスター管理画面から自由に削除できる。
+        if roster.isEmpty {
+            roster = AppState.sampleRoster()
+        }
+    }
+
+    // ── サンプルロスター（FW4 / MF6 / DF5 = 15人） ──
+    static func sampleRoster() -> [RosterPlayer] {
+        [
+            // ── FW（4人） ──
+            RosterPlayer(name: "田中 翔",   position: .fw, height: "178", foot: .right),
+            RosterPlayer(name: "山田 蓮",   position: .fw, height: "175", foot: .left),
+            RosterPlayer(name: "鈴木 大輝", position: .fw, height: "182", foot: .right),
+            RosterPlayer(name: "高橋 颯",   position: .fw, height: "173", foot: .both),
+            // ── MF（6人） ──
+            RosterPlayer(name: "佐藤 陸",   position: .mf, height: "172", foot: .right),
+            RosterPlayer(name: "中村 海斗", position: .mf, height: "170", foot: .left),
+            RosterPlayer(name: "伊藤 颯太", position: .mf, height: "174", foot: .right),
+            RosterPlayer(name: "渡辺 悠真", position: .mf, height: "168", foot: .both),
+            RosterPlayer(name: "小林 蒼",   position: .mf, height: "176", foot: .right),
+            RosterPlayer(name: "加藤 樹",   position: .mf, height: "171", foot: .left),
+            // ── DF（5人） ──
+            RosterPlayer(name: "山本 健",   position: .df, height: "183", foot: .right),
+            RosterPlayer(name: "吉田 大樹", position: .df, height: "180", foot: .right),
+            RosterPlayer(name: "松本 涼",   position: .df, height: "178", foot: .left),
+            RosterPlayer(name: "井上 拓海", position: .df, height: "185", foot: .right),
+            RosterPlayer(name: "木村 隼人", position: .df, height: "177", foot: .both),
+        ]
+    }
+
     // ── Match管理 ──
     func addMatch(_ m: Match) { matches.insert(m, at: 0) }
     func updateMatch(_ m: Match) { if let i = matches.firstIndex(where:{$0.id==m.id}) { matches[i]=m } }
