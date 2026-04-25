@@ -46,6 +46,20 @@ class AppState: ObservableObject {
     func updateMatch(_ m: Match) { if let i = matches.firstIndex(where:{$0.id==m.id}) { matches[i]=m } }
     func finishMatch(_ id: UUID) { if let i = matches.firstIndex(where:{$0.id==id}) { matches[i].isFinished=true } }
 
+    // ── 選手交代（スタメンとベンチを入れ替え） ──
+    // OUT した選手は wasSubstituted=true になり、その試合では再投入不可。
+    // IN した選手は通常通り後で交代できる。
+    func substitutePlayer(matchId: UUID, outId: UUID, inId: UUID) {
+        guard let mi = matches.firstIndex(where: { $0.id == matchId }) else { return }
+        if let oi = matches[mi].players.firstIndex(where: { $0.id == outId }) {
+            matches[mi].players[oi].isStarter = false
+            matches[mi].players[oi].wasSubstituted = true
+        }
+        if let ii = matches[mi].players.firstIndex(where: { $0.id == inId }) {
+            matches[mi].players[ii].isStarter = true
+        }
+    }
+
     // ── Roster管理（スナップショット方式：既存試合には影響しない） ──
     func addRosterPlayer(_ p: RosterPlayer) { roster.append(p) }
     func updateRosterPlayer(_ p: RosterPlayer) {

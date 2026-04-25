@@ -28,7 +28,7 @@ struct HexButtonConfig: Identifiable {
     let positionAngleDeg: Double // 中央から見たボタンの配置角度
     let color: Color
     let tapEffects: [StatEffect]?    // nil = タップ無効（フリック必須）
-    let tapIsShootMenu: Bool         // true = SHOOTボタン（Goal/Missサブメニュー展開）
+    let tapIsSubMenu: Bool           // true = 交代/カード サブメニューを開く
     let flickOptions: [FlickOption]
 }
 
@@ -38,10 +38,12 @@ struct HexButtonConfig: Identifiable {
 
 struct HexButtonMenu: View {
     @Binding var player: Player
+    let bench: [Player]
+    let onSubstitute: (UUID) -> Void
     let onClose: () -> Void
 
     @State private var activeButtonId: String? = nil
-    @State private var shootMenuOpen: Bool = false
+    @State private var subMenuOpen: Bool = false
     @State private var toastMessage: String = ""
     @State private var showToast: Bool = false
     @State private var appeared: Bool = false
@@ -49,103 +51,110 @@ struct HexButtonMenu: View {
     // 6ボタンの構成
     private var buttonConfigs: [HexButtonConfig] {
         [
-            // ① SHOOT（上）
+            // ① SHOOT（上） — タップ=シュート、フリック上=GOAL
             HexButtonConfig(
                 id: "shoot", label: "SHOOT", subtitle: "シュート",
                 icon: "soccerball",
                 positionAngleDeg: 90,
                 color: Color(red:0.95, green:0.25, blue:0.30),
-                tapEffects: nil,
-                tapIsShootMenu: true,
-                flickOptions: []
+                tapEffects: [StatEffect(keyPath:\.spg, delta:1)],
+                tapIsSubMenu: false,
+                flickOptions: [
+                    FlickOption(label:"⚽️ GOAL!", angleDeg:90, effects:[
+                        StatEffect(keyPath:\.spg,   delta:1),
+                        StatEffect(keyPath:\.goals, delta:1)
+                    ], color:Color.green)
+                ]
             ),
-            // ② PASS（右上）
+            // ② PASS（右上） — タップ=パスのみ、フリック=Assist/KeyPass/LongPass（全てパス+1）
             HexButtonConfig(
                 id: "pass", label: "PASS", subtitle: "パス",
                 icon: "arrow.triangle.swap",
                 positionAngleDeg: 30,
                 color: Color(red:0.20, green:0.55, blue:0.95),
                 tapEffects: [StatEffect(keyPath:\.avgP, delta:1)],
-                tapIsShootMenu: false,
+                tapIsSubMenu: false,
                 flickOptions: [
-                    FlickOption(label:"Key Pass", angleDeg:90, effects:[
-                        StatEffect(keyPath:\.avgP, delta:1),
-                        StatEffect(keyPath:\.keyP, delta:1)
-                    ], color:Color.cyan),
-                    FlickOption(label:"Assist", angleDeg:0, effects:[
+                    FlickOption(label:"Assist", angleDeg:90, effects:[
                         StatEffect(keyPath:\.avgP,    delta:1),
                         StatEffect(keyPath:\.keyP,    delta:1),
                         StatEffect(keyPath:\.assists, delta:1)
-                    ], color:Color.yellow)
+                    ], color:Color.yellow),
+                    FlickOption(label:"Key Pass", angleDeg:180, effects:[
+                        StatEffect(keyPath:\.avgP, delta:1),
+                        StatEffect(keyPath:\.keyP, delta:1)
+                    ], color:Color.cyan),
+                    FlickOption(label:"Long Pass", angleDeg:0, effects:[
+                        StatEffect(keyPath:\.avgP,  delta:1),
+                        StatEffect(keyPath:\.longB, delta:1)
+                    ], color:Color.orange)
                 ]
             ),
-            // ③ DRIBBLE（右下）
+            // ③ DRIBBLE（右下） — フリック3択：成功 / ロスト / ミスタッチ
             HexButtonConfig(
                 id: "dribble", label: "DRIBBLE", subtitle: "ドリブル",
                 icon: "figure.run",
                 positionAngleDeg: -30,
                 color: Color(red:0.20, green:0.75, blue:0.40),
                 tapEffects: nil,
-                tapIsShootMenu: false,
+                tapIsSubMenu: false,
                 flickOptions: [
-                    FlickOption(label:"成功 (drbOff)", angleDeg:90, effects:[
+                    FlickOption(label:"成功", angleDeg:90, effects:[
                         StatEffect(keyPath:\.drbOff, delta:1)
                     ], color:Color.green),
-                    FlickOption(label:"失敗 (Disp)", angleDeg:-90, effects:[
+                    FlickOption(label:"ロスト", angleDeg:-90, effects:[
                         StatEffect(keyPath:\.disp, delta:1)
-                    ], color:Color.red)
-                ]
-            ),
-            // ⑥ MISS（下）※目立つ赤系
-            HexButtonConfig(
-                id: "miss", label: "MISS", subtitle: "ロスト",
-                icon: "xmark.circle.fill",
-                positionAngleDeg: -90,
-                color: Color(red:0.85, green:0.10, blue:0.40),
-                tapEffects: nil,
-                tapIsShootMenu: false,
-                flickOptions: [
-                    FlickOption(label:"MisTouch", angleDeg:180, effects:[
+                    ], color:Color.red),
+                    FlickOption(label:"ミスタッチ", angleDeg:180, effects:[
                         StatEffect(keyPath:\.unsTch, delta:1)
-                    ], color:Color.orange),
-                    FlickOption(label:"Dish (ロスト)", angleDeg:0, effects:[
-                        StatEffect(keyPath:\.disp, delta:1)
-                    ], color:Color(red:1.0, green:0.35, blue:0.35))
+                    ], color:Color.orange)
                 ]
             ),
-            // ④ DEFENSE（左下）
+            // ④ BLOCK（下） — フリック2択：Block / Clear
+            HexButtonConfig(
+                id: "block", label: "BLOCK", subtitle: "ブロック",
+                icon: "rectangle.fill",
+                positionAngleDeg: -90,
+                color: Color(red:0.45, green:0.65, blue:0.95),
+                tapEffects: nil,
+                tapIsSubMenu: false,
+                flickOptions: [
+                    FlickOption(label:"Block", angleDeg:90, effects:[
+                        StatEffect(keyPath:\.blocks, delta:1)
+                    ], color:Color.cyan),
+                    FlickOption(label:"Clear", angleDeg:180, effects:[
+                        StatEffect(keyPath:\.clear, delta:1)
+                    ], color:Color.yellow)
+                ]
+            ),
+            // ⑤ DEFENSE（左下） — タップ=Inter単独、フリック=Inter+追加（タックル/抜かれ）
             HexButtonConfig(
                 id: "defense", label: "DEFENSE", subtitle: "守備",
                 icon: "shield.fill",
                 positionAngleDeg: -150,
                 color: Color(red:0.45, green:0.30, blue:0.85),
-                tapEffects: nil,
-                tapIsShootMenu: false,
+                tapEffects: [StatEffect(keyPath:\.inter, delta:1)],
+                tapIsSubMenu: false,
                 flickOptions: [
-                    FlickOption(label:"Tackle", angleDeg:90, effects:[
+                    FlickOption(label:"+ Tackle", angleDeg:90, effects:[
+                        StatEffect(keyPath:\.inter,   delta:1),
                         StatEffect(keyPath:\.tackles, delta:1)
                     ], color:Color.indigo),
-                    FlickOption(label:"Inter", angleDeg:180, effects:[
-                        StatEffect(keyPath:\.inter, delta:1)
-                    ], color:Color.blue),
-                    FlickOption(label:"Block", angleDeg:-90, effects:[
-                        StatEffect(keyPath:\.blocks, delta:1)
-                    ], color:Color.cyan)
+                    FlickOption(label:"+ 抜かれ", angleDeg:-90, effects:[
+                        StatEffect(keyPath:\.inter,  delta:1),
+                        StatEffect(keyPath:\.drbDef, delta:1)
+                    ], color:Color.red)
                 ]
             ),
-            // ⑤ CLEAR（左上）
+            // ⑥ SUB（左上） — タップで「交代/カード」サブメニュー
             HexButtonConfig(
-                id: "clear", label: "CLEAR", subtitle: "クリア",
-                icon: "arrow.up.to.line",
+                id: "sub", label: "SUB", subtitle: "交代/カード",
+                icon: "arrow.triangle.2.circlepath",
                 positionAngleDeg: 150,
-                color: Color(red:0.95, green:0.55, blue:0.15),
-                tapEffects: [StatEffect(keyPath:\.clear, delta:1)],
-                tapIsShootMenu: false,
-                flickOptions: [
-                    FlickOption(label:"Long Ball", angleDeg:90, effects:[
-                        StatEffect(keyPath:\.longB, delta:1)
-                    ], color:Color.yellow)
-                ]
+                color: Color(red:0.70, green:0.30, blue:0.55),
+                tapEffects: [],   // タップ可だが、効果なし（サブメニューを開くだけ）
+                tapIsSubMenu: true,
+                flickOptions: []
             ),
         ]
     }
@@ -175,11 +184,11 @@ struct HexButtonMenu: View {
                             activeButtonId = nil
                         },
                         onTapCommit: {
-                            if config.tapIsShootMenu {
+                            if config.tapIsSubMenu {
                                 withAnimation(.spring(response:0.3,dampingFraction:0.65)) {
-                                    shootMenuOpen = true
+                                    subMenuOpen = true
                                 }
-                            } else if let tap = config.tapEffects {
+                            } else if let tap = config.tapEffects, !tap.isEmpty {
                                 applyEffects(tap, toast: config.label)
                             }
                             activeButtonId = nil
@@ -204,27 +213,28 @@ struct HexButtonMenu: View {
                     .position(x: centerX, y: centerY)
                     .zIndex(5)
 
-                // ── SHOOTサブメニュー（Goal/Miss） ──
-                if shootMenuOpen {
-                    ShootSubmenuView(
-                        onGoal: {
-                            applyEffects([
-                                StatEffect(keyPath:\.spg,   delta:1),
-                                StatEffect(keyPath:\.goals, delta:1)
-                            ], toast: "⚽️ GOAL!")
-                            withAnimation { shootMenuOpen = false }
+                // ── SUB+カードサブメニュー ──
+                if subMenuOpen {
+                    SubstitutionMenuView(
+                        player: $player,
+                        bench: bench,
+                        onSubstitute: { benchId in
+                            onSubstitute(benchId)
+                            withAnimation { subMenuOpen = false }
                         },
-                        onMiss: {
-                            applyEffects([
-                                StatEffect(keyPath:\.spg, delta:1)
-                            ], toast: "🎯 Shoot (外れ)")
-                            withAnimation { shootMenuOpen = false }
+                        onCardChange: { isYellow, delta in
+                            let kp: WritableKeyPath<PlayerStats, Int> = isYellow ? \.yellowCards : \.redCards
+                            let maxVal = isYellow ? 2 : 1   // イエロー上限2、レッド上限1
+                            let proposed = player.stats[keyPath: kp] + delta
+                            let newVal = max(0, min(maxVal, proposed))
+                            player.stats[keyPath: kp] = newVal
+                            UISelectionFeedbackGenerator().selectionChanged()
                         },
                         onCancel: {
-                            withAnimation { shootMenuOpen = false }
+                            withAnimation { subMenuOpen = false }
                         }
                     )
-                    .position(x: centerX, y: centerY - 190)
+                    .position(x: centerX, y: centerY)
                     .zIndex(200)
                     .transition(.scale(scale:0.3).combined(with:.opacity))
                 }
@@ -409,10 +419,10 @@ struct HexButton: View {
 
                     if dist < flickThreshold {
                         // タップ扱い
-                        if config.tapIsShootMenu || config.tapEffects != nil {
+                        if config.tapIsSubMenu || (config.tapEffects != nil) {
                             onTapCommit()
                         } else {
-                            // タップ無効ボタン（DRIBBLE, DEFENSE, MISS）
+                            // タップ無効ボタン（DRIBBLE, DEFENSE, BLOCK）
                             onCancel()
                         }
                     } else if let hlId = highlightedOptionId,
@@ -489,6 +499,23 @@ struct CenterPlayerPanel: View {
                 Text(ratingLabel(player.rating))
                     .font(.system(size:8, weight:.heavy))
                     .foregroundColor(.white.opacity(0.8))
+                // カード警告（持っていれば表示）
+                if player.stats.yellowCards > 0 || player.stats.redCards > 0 {
+                    HStack(spacing: 4) {
+                        if player.stats.yellowCards > 0 {
+                            HStack(spacing:1) {
+                                Rectangle().fill(Color.yellow).frame(width:6, height:9).cornerRadius(1)
+                                Text("\(player.stats.yellowCards)").font(.system(size:8, weight:.heavy)).foregroundColor(.white)
+                            }
+                        }
+                        if player.stats.redCards > 0 {
+                            HStack(spacing:1) {
+                                Rectangle().fill(Color.red).frame(width:6, height:9).cornerRadius(1)
+                                Text("\(player.stats.redCards)").font(.system(size:8, weight:.heavy)).foregroundColor(.white)
+                            }
+                        }
+                    }
+                }
             }
             .frame(width: 112, height: 112)
 
@@ -514,82 +541,153 @@ struct CenterPlayerPanel: View {
 }
 
 // ============================================================
-// MARK: - SHOOT SUBMENU VIEW（Goal / Miss 二択）
+// MARK: - SUBSTITUTION MENU VIEW（選手交代＋カード管理オーバーレイ）
 // ============================================================
 
-struct ShootSubmenuView: View {
-    let onGoal: () -> Void
-    let onMiss: () -> Void
+struct SubstitutionMenuView: View {
+    @Binding var player: Player
+    let bench: [Player]
+    let onSubstitute: (UUID) -> Void
+    let onCardChange: (Bool, Int) -> Void   // (isYellow, delta)
     let onCancel: () -> Void
 
     var body: some View {
-        VStack(spacing: 12) {
-            Text("GOAL? / MISS?")
-                .font(.system(size:13, weight:.black))
-                .foregroundColor(.white.opacity(0.9))
-                .shadow(color:.black.opacity(0.6), radius:2)
-
-            HStack(spacing: 14) {
-                // GOAL
-                Button(action: onGoal) {
-                    VStack(spacing: 3) {
-                        Image(systemName:"soccerball")
-                            .font(.system(size:28, weight:.bold))
-                        Text("GOAL")
-                            .font(.system(size:13, weight:.heavy))
-                    }
-                    .foregroundColor(.white)
-                    .frame(width: 88, height: 88)
-                    .background(
-                        Circle().fill(LinearGradient(
-                            colors:[Color(red:0.2,green:0.85,blue:0.35), Color(red:0.1,green:0.6,blue:0.25)],
-                            startPoint:.top, endPoint:.bottom
-                        ))
-                    )
-                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                    .shadow(color: .green.opacity(0.8), radius: 18)
-                }
-                .buttonStyle(.plain)
-
-                // MISS（外れ）
-                Button(action: onMiss) {
-                    VStack(spacing: 3) {
-                        Image(systemName:"xmark")
-                            .font(.system(size:26, weight:.bold))
-                        Text("MISS")
-                            .font(.system(size:13, weight:.heavy))
-                    }
-                    .foregroundColor(.white)
-                    .frame(width: 88, height: 88)
-                    .background(
-                        Circle().fill(LinearGradient(
-                            colors:[Color(red:0.95,green:0.30,blue:0.30), Color(red:0.7,green:0.15,blue:0.2)],
-                            startPoint:.top, endPoint:.bottom
-                        ))
-                    )
-                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                    .shadow(color: .red.opacity(0.8), radius: 18)
-                }
-                .buttonStyle(.plain)
+        VStack(spacing: 14) {
+            // タイトル
+            HStack {
+                Image(systemName:"arrow.triangle.2.circlepath")
+                    .foregroundColor(.white.opacity(0.85))
+                Text("交代 / カード")
+                    .font(.system(size:14, weight:.heavy))
+                    .foregroundColor(.white.opacity(0.95))
             }
 
-            Button(action: onCancel) {
-                Text("キャンセル")
+            // ── カード（イエロー上限2 / レッド上限1） ──
+            HStack(spacing: 18) {
+                cardCounter(isYellow: true,  count: player.stats.yellowCards, maxCount: 2)
+                cardCounter(isYellow: false, count: player.stats.redCards,    maxCount: 1)
+            }
+
+            Rectangle().fill(Color.white.opacity(0.18)).frame(height: 1)
+
+            // ── 選手交代 ──
+            VStack(alignment: .leading, spacing: 6) {
+                Text("選手交代（ベンチ → \(player.name) と入れ替え）")
                     .font(.system(size:11, weight:.semibold))
-                    .foregroundColor(.white.opacity(0.75))
-                    .padding(.horizontal, 14).padding(.vertical, 5)
+                    .foregroundColor(.white.opacity(0.8))
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                if player.wasSubstituted {
+                    // この画面のplayerは交代でINしてきた選手等。OUT済みの選手はそもそもベンチ表示しない仕様だが念のため。
+                    HStack {
+                        Image(systemName:"lock.fill").foregroundColor(.orange)
+                        Text("この選手は既に交代済みのため再交代できません")
+                            .font(.system(size:11))
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                    .padding(.vertical, 8).frame(maxWidth: .infinity)
+                } else if bench.isEmpty {
+                    Text("ベンチに交代可能な選手がいません")
+                        .font(.system(size:11))
+                        .foregroundColor(.white.opacity(0.5))
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 6) {
+                            ForEach(bench) { b in
+                                Button { onSubstitute(b.id) } label: {
+                                    HStack(spacing: 8) {
+                                        ZStack {
+                                            Circle().fill(b.position.color.opacity(0.25)).frame(width: 28, height: 28)
+                                            Image(systemName: b.position.icon)
+                                                .font(.system(size: 12, weight:.semibold))
+                                                .foregroundColor(b.position.color)
+                                        }
+                                        VStack(alignment: .leading, spacing: 0) {
+                                            Text(b.name).font(.system(size:12, weight:.bold)).foregroundColor(.white)
+                                            Text(b.position.label).font(.system(size:9)).foregroundColor(.white.opacity(0.7))
+                                        }
+                                        Spacer()
+                                        Image(systemName:"arrow.left.arrow.right")
+                                            .font(.system(size:11, weight:.bold))
+                                            .foregroundColor(.green)
+                                    }
+                                    .padding(.horizontal, 10).padding(.vertical, 7)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 9, style:.continuous)
+                                            .fill(Color.white.opacity(0.10))
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 150)
+                }
+            }
+
+            // 閉じる
+            Button(action: onCancel) {
+                Text("閉じる")
+                    .font(.system(size:11, weight:.semibold))
+                    .foregroundColor(.white.opacity(0.85))
+                    .padding(.horizontal, 16).padding(.vertical, 6)
                     .background(Capsule().stroke(Color.white.opacity(0.45), lineWidth:1))
             }
         }
-        .padding(18)
+        .padding(16)
+        .frame(width: 280)
         .background(
-            RoundedRectangle(cornerRadius: 22, style:.continuous)
-                .fill(Color.black.opacity(0.80))
+            RoundedRectangle(cornerRadius: 20, style:.continuous)
+                .fill(Color.black.opacity(0.86))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 22, style:.continuous)
+                    RoundedRectangle(cornerRadius: 20, style:.continuous)
                         .stroke(Color.white.opacity(0.28), lineWidth: 1)
                 )
                 .shadow(color:.black.opacity(0.5), radius: 14)
+        )
+    }
+
+    @ViewBuilder
+    private func cardCounter(isYellow: Bool, count: Int, maxCount: Int) -> some View {
+        let isAtMax = count >= maxCount
+        let isAtMin = count <= 0
+        VStack(spacing: 4) {
+            Rectangle()
+                .fill(isYellow ? Color.yellow : Color.red)
+                .frame(width: 22, height: 30)
+                .cornerRadius(2)
+                .shadow(color:.black.opacity(0.4), radius:2)
+                .overlay(
+                    Text("\(count)/\(maxCount)")
+                        .font(.system(size:8, weight:.heavy))
+                        .foregroundColor(.black.opacity(0.7))
+                        .offset(y: 18)
+                )
+            HStack(spacing: 6) {
+                Button { onCardChange(isYellow, -1) } label: {
+                    Image(systemName:"minus.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(.white.opacity(isAtMin ? 0.25 : 0.85))
+                }
+                .disabled(isAtMin)
+                Text("\(count)")
+                    .font(.system(size: 18, weight:.heavy, design:.rounded))
+                    .foregroundColor(.white)
+                    .frame(minWidth: 22)
+                Button { onCardChange(isYellow, 1) } label: {
+                    Image(systemName:"plus.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(.white.opacity(isAtMax ? 0.25 : 0.95))
+                }
+                .disabled(isAtMax)
+            }
+        }
+        .padding(.vertical, 4).padding(.horizontal, 10)
+        .padding(.top, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style:.continuous)
+                .fill(Color.white.opacity(0.06))
         )
     }
 }

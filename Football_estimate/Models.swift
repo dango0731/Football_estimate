@@ -64,6 +64,9 @@ struct PlayerStats {
     var inter: Int = 0;  var clear: Int = 0;   var blocks: Int = 0
     var drbDef: Int = 0; var avgP: Int = 0;    var longB: Int = 0
     var disp: Int = 0;   var unsTch: Int = 0
+    // ── カード（レーティング非影響） ──
+    var yellowCards: Int = 0
+    var redCards: Int = 0
 
     func calculateRating(for position: Position) -> Double {
         let g=Double(goals); let a=Double(assists); let s=Double(spg)
@@ -76,6 +79,10 @@ struct PlayerStats {
         case .mf: r = 5.61+(0.50*g)+(0.68*a)+(0.16*kp)+(0.15*it)+(0.13*tk)+(0.10*do_)+(0.004*ap)+(0.08*lb)
         case .df: r = 5.81+(0.30*it)+(0.15*tk)+(0.67*g)+(0.50*a)+(0.17*kp)+(0.01*ap)+(0.21*bl)-(0.10*dd)
         }
+        // ── カード減点（上限 -1.0：2Y=R 換算のため） ──
+        // 1Y → -0.5、2Y or 1R → -1.0、それ以上は加算されない
+        let cardPenalty = min(1.0, 0.5 * Double(yellowCards) + 1.0 * Double(redCards))
+        r -= cardPenalty
         return min(10.0, max(1.0, r))
     }
 }
@@ -88,6 +95,7 @@ struct Player: Identifiable {
     var height: String = ""
     var foot: Foot = .right
     var isStarter: Bool = true
+    var wasSubstituted: Bool = false   // 交代でOUTした選手（再投入不可）
     var stats: PlayerStats = PlayerStats()
     var rating: Double { stats.calculateRating(for: position) }
 }

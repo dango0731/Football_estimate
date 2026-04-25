@@ -47,5 +47,15 @@ struct MatchResultView: View {
         .listStyle(.insetGrouped)
         .navigationTitle("vs \(match.opponent) 結果")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                NavigationLink {
+                    MatchStatsDetailView(match: match)
+                } label: {
+                    Label("詳細スタッツ", systemImage: "list.bullet.rectangle.portrait")
+                        .font(.subheadline.weight(.semibold))
+                }
+            }
+        }
     }
 }

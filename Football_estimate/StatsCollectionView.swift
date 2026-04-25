@@ -103,6 +103,12 @@ struct StatsCollectionView: View {
 
                     HexButtonMenu(
                         player: $appState.matches[mi].players[pi],
+                        bench: appState.matches[mi].players.filter { !$0.isStarter && !$0.wasSubstituted },
+                        onSubstitute: { benchId in
+                            appState.substitutePlayer(matchId: matchId, outId: pid, inId: benchId)
+                            // 交代後はラジアルメニューを閉じる
+                            withAnimation { selectedPlayerId = nil }
+                        },
                         onClose: { withAnimation { selectedPlayerId = nil } }
                     )
                     .transition(.asymmetric(
