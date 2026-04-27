@@ -92,7 +92,7 @@ struct HexButtonMenu: View {
                     ], color:Color.orange)
                 ]
             ),
-            // ③ DRIBBLE（右下 θ=-30°） — 外側(0°〜-60°)へ扇状展開
+            // ③ DRIBBLE（右下 θ=-30°） — 成功 / 被ファウル
             HexButtonConfig(
                 id: "dribble", label: "DRIBBLE", subtitle: "ドリブル",
                 icon: "figure.run",
@@ -104,32 +104,34 @@ struct HexButtonMenu: View {
                     FlickOption(label:"成功", angleDeg:0, effects:[
                         StatEffect(keyPath:\.drbOff, delta:1)
                     ], color:Color.green),
-                    FlickOption(label:"ミスタッチ", angleDeg:-30, effects:[
-                        StatEffect(keyPath:\.unsTch, delta:1)
-                    ], color:Color.orange),
-                    FlickOption(label:"ロスト", angleDeg:-60, effects:[
-                        StatEffect(keyPath:\.disp, delta:1)
-                    ], color:Color.red)
-                ]
-            ),
-            // ④ BLOCK（下 θ=-90°） — 外側(-60°/-120°)へ展開
-            HexButtonConfig(
-                id: "block", label: "BLOCK", subtitle: "ブロック",
-                icon: "rectangle.fill",
-                positionAngleDeg: -90,
-                color: Color(red:0.45, green:0.65, blue:0.95),
-                tapEffects: nil,
-                tapIsSubMenu: false,
-                flickOptions: [
-                    FlickOption(label:"Block", angleDeg:-60, effects:[
-                        StatEffect(keyPath:\.blocks, delta:1)
-                    ], color:Color.cyan),
-                    FlickOption(label:"Clear", angleDeg:-120, effects:[
-                        StatEffect(keyPath:\.clear, delta:1)
+                    // 被ファウル：相手から反則を受けた（FW評価で +0.05）
+                    FlickOption(label:"被ファウル", angleDeg:-60, effects:[
+                        StatEffect(keyPath:\.fouled, delta:1)
                     ], color:Color.yellow)
                 ]
             ),
-            // ⑤ DEFENSE（左下 θ=-150°） — 外側(-120°/-180°)へ展開
+            // ④ MISS（下 θ=-90°） — ミス・反則：ミスタッチ/ロスト/ファウル
+            HexButtonConfig(
+                id: "miss", label: "MISS", subtitle: "ミス・反則",
+                icon: "exclamationmark.triangle.fill",
+                positionAngleDeg: -90,
+                color: Color(red:0.95, green:0.55, blue:0.20),
+                tapEffects: nil,
+                tapIsSubMenu: false,
+                flickOptions: [
+                    FlickOption(label:"ミスタッチ", angleDeg:-60, effects:[
+                        StatEffect(keyPath:\.unsTch, delta:1)
+                    ], color:Color.orange),
+                    FlickOption(label:"ロスト", angleDeg:-90, effects:[
+                        StatEffect(keyPath:\.disp, delta:1)
+                    ], color:Color.red),
+                    FlickOption(label:"ファウル", angleDeg:-120, effects:[
+                        StatEffect(keyPath:\.fouls, delta:1)
+                    ], color:Color.red)
+                ]
+            ),
+            // ⑤ DEFENSE（左下 θ=-150°） — タックル / ブロック / 被ドリブル
+            // タップ = インター単独。各フリックは独立した守備イベント。
             HexButtonConfig(
                 id: "defense", label: "DEFENSE", subtitle: "守備",
                 icon: "shield.fill",
@@ -138,11 +140,13 @@ struct HexButtonMenu: View {
                 tapEffects: [StatEffect(keyPath:\.inter, delta:1)],
                 tapIsSubMenu: false,
                 flickOptions: [
-                    FlickOption(label:"+ Tackle", angleDeg:-120, effects:[
-                        StatEffect(keyPath:\.inter,   delta:1),
+                    FlickOption(label:"タックル", angleDeg:-120, effects:[
                         StatEffect(keyPath:\.tackles, delta:1)
                     ], color:Color.indigo),
-                    // 被ドリブル：守備失敗のみを記録（インター加算しない）
+                    FlickOption(label:"ブロック", angleDeg:-150, effects:[
+                        StatEffect(keyPath:\.blocks, delta:1)
+                    ], color:Color.cyan),
+                    // 被ドリブル：守備失敗
                     FlickOption(label:"被ドリブル", angleDeg:180, effects:[
                         StatEffect(keyPath:\.drbDef, delta:1)
                     ], color:Color.red)

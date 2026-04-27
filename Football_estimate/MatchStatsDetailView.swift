@@ -125,6 +125,11 @@ struct MatchStatsDetailView: View {
             statRow([
                 StatCell(label: "Disp",     value: s.disp,    tint: .red),
                 StatCell(label: "MisTch",   value: s.unsTch,  tint: .orange),
+                StatCell(label: "Fouled",   value: s.fouled,  tint: .green),
+            ])
+            statRow([
+                StatCell(label: "Foul",     value: s.fouls,   tint: .red),
+                nil,
                 nil,
             ])
         }

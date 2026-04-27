@@ -56,6 +56,8 @@ let passingItems: [StatItemDef] = [
     StatItemDef(label: "ロングボール", shortLabel: "LongB",  icon: "arrow.up.forward",     keyPath: \.longB,  isNegative: false),
     StatItemDef(label: "ボール喪失",   shortLabel: "Disp",   icon: "minus.circle.fill",    keyPath: \.disp,   isNegative: true),
     StatItemDef(label: "ミスタッチ",   shortLabel: "MisTch", icon: "xmark.circle.fill",    keyPath: \.unsTch, isNegative: true),
+    StatItemDef(label: "被ファウル",   shortLabel: "Fouled", icon: "hand.raised.fill",     keyPath: \.fouled, isNegative: false),
+    StatItemDef(label: "ファウル",     shortLabel: "Foul",   icon: "exclamationmark.triangle.fill", keyPath: \.fouls,  isNegative: true),
 ]
 
 struct PlayerStats {
@@ -79,6 +81,7 @@ struct PlayerStats {
         let do_ = Double(drbOff); let kp = Double(keyP);    let tk = Double(tackles)
         let it = Double(inter);  let bl = Double(blocks);  let dd = Double(drbDef)
         let ap = Double(avgP)
+        let fd = Double(fouled); let di = Double(disp);    let ut = Double(unsTch)
 
         // ── 時間減点（出場分数に比例、初期値 6.00 から差し引き） ──
         let timeLossRate: Double
@@ -89,15 +92,22 @@ struct PlayerStats {
         }
         let timeLoss = timeLossRate * max(0, mins)
 
-        // ── スタッツ加点（ポジション別に有意な項目のみ） ──
+        // ── スタッツ加点（ポジション別の重回帰係数） ──
+        // 90分プレー時は元の切片(FW=5.58, MF=5.61, DF=5.81)と完全一致
         let statBonus: Double
         switch position {
         case .fw:
-            statBonus = 0.41*g + 0.61*a + 0.22*s + 0.12*do_
+            // FW: 0.41G + 0.61A + 0.22SpG + 0.12Drb_Off + 0.01AvgP + 0.05Fouled − 0.05Disp − 0.04UnsTch
+            statBonus = 0.41*g + 0.61*a + 0.22*s + 0.12*do_ + 0.01*ap
+                      + 0.05*fd - 0.05*di - 0.04*ut
         case .mf:
+            // MF: 0.50G + 0.68A + 0.16KeyP + 0.15Inter + 0.13Tackles + 0.10Drb_Off + 0.004AvgP
             statBonus = 0.50*g + 0.68*a + 0.16*kp + 0.15*it + 0.13*tk
+                      + 0.10*do_ + 0.004*ap
         case .df:
-            statBonus = 0.30*it + 0.67*g + 0.50*a + 0.21*bl + 0.01*ap - 0.10*dd
+            // DF: 0.30Inter + 0.67G + 0.50A + 0.17KeyP + 0.01AvgP + 0.21Blocks − 0.10Drb_Def
+            statBonus = 0.30*it + 0.67*g + 0.50*a + 0.17*kp + 0.01*ap
+                      + 0.21*bl - 0.10*dd
         }
 
         var r = 6.00 - timeLoss + statBonus

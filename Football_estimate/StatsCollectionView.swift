@@ -375,6 +375,8 @@ struct HalfTimeReviewView: View {
                     halfTeamStatRow("Tackle",    match.players.reduce(0){$0+$1.stats.tackles}, icon: "shield.fill")
                     halfTeamStatRow("Block",     match.players.reduce(0){$0+$1.stats.blocks},  icon: "rectangle.fill")
                     halfTeamStatRow("被ドリブル", match.players.reduce(0){$0+$1.stats.drbDef}, icon: "figure.run.circle.fill")
+                    halfTeamStatRow("被ファウル", match.players.reduce(0){$0+$1.stats.fouled}, icon: "hand.raised.fill")
+                    halfTeamStatRow("ファウル",   match.players.reduce(0){$0+$1.stats.fouls},  icon: "exclamationmark.triangle.fill")
                 }
 
                 Section { Color.clear.frame(height: 70) }
