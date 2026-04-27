@@ -36,13 +36,23 @@ struct MatchStatsDetailView: View {
                                         .padding(.horizontal, 6).padding(.vertical, 2)
                                         .background(Capsule().fill(player.position.color.opacity(0.15)))
                                         .foregroundColor(player.position.color)
-                                    Text(player.isStarter ? "スタメン" : "ベンチ")
+                                    Text(player.isStarter ? "出場中" : (player.wasSubstituted ? "途中OUT" : "ベンチ"))
                                         .font(.caption2.weight(.semibold))
-                                        .foregroundColor(player.isStarter ? .green : .secondary)
+                                        .foregroundColor(player.isStarter ? .green : (player.wasSubstituted ? .orange : .secondary))
                                     if !player.height.isEmpty {
                                         Text("\(player.height)cm").font(.caption2).foregroundColor(.secondary)
                                     }
                                     Text(player.foot.rawValue).font(.caption2).foregroundColor(.secondary)
+                                }
+                                // ── 出場時間 ──
+                                HStack(spacing: 4) {
+                                    Image(systemName:"timer").font(.caption2).foregroundColor(.secondary)
+                                    Text("計\(formatMinutes(player.totalMinutes))")
+                                        .font(.caption2.weight(.semibold).monospacedDigit())
+                                        .foregroundColor(.secondary)
+                                    Text("(前\(formatMinutes(player.firstHalfMinutes)) / 後\(formatMinutes(player.secondHalfMinutes)))")
+                                        .font(.system(size: 10).monospacedDigit())
+                                        .foregroundColor(.secondary.opacity(0.75))
                                 }
                             }
                             Spacer()

@@ -41,7 +41,7 @@ struct PlayerRegistrationView: View {
                             Button {
                                 navPath.append(NavRoute.statsCollection(matchId))
                             } label: {
-                                Label("スタッツ収集を開始", systemImage: "play.circle.fill")
+                                Label("セットアップへ進む", systemImage: "sportscourt.fill")
                                     .font(.headline.weight(.bold)).frame(maxWidth:.infinity).padding(.vertical,12)
                                     .background(Color.green).foregroundColor(.white)
                                     .clipShape(RoundedRectangle(cornerRadius:12))
@@ -80,7 +80,7 @@ struct PlayerRegistrationView: View {
                 Section {
                     if starters.isEmpty { Text("先発選手を追加してください").foregroundColor(.secondary).italic() }
                     else { ForEach(starters) { PlayerRegRow(player:$0) }.onDelete { deletePlayer(at:$0,isStarter:true) } }
-                } header: { Label("スタメン (\(starters.count)/11名)",systemImage:"star.fill").foregroundColor(.orange) }
+                } header: { Label("スタメン (\(starters.count)/10名・GK除く)",systemImage:"star.fill").foregroundColor(.orange) }
 
                 Section {
                     if bench.isEmpty { Text("ベンチ選手を追加してください").foregroundColor(.secondary).italic() }
@@ -105,7 +105,7 @@ struct PlayerRegistrationView: View {
             }.padding(.horizontal,20).padding(.vertical,12).background(.ultraThinMaterial)
         }
         .sheet(isPresented:$showAddPlayer) {
-            AddPlayerSheet(canAddStarter: starters.count < 11) { name,pos,height,foot,isStarter in
+            AddPlayerSheet(canAddStarter: starters.count < 10) { name,pos,height,foot,isStarter in
                 // ① ロスターにも自動登録（スナップショット方式）
                 let rosterPlayer = RosterPlayer(
                     name: name,
@@ -116,8 +116,8 @@ struct PlayerRegistrationView: View {
                 appState.addRosterPlayer(rosterPlayer)
 
                 // ② 試合にも追加（rosterIdで紐付け）
-                // スタメン上限(11名)に達している場合は強制的にベンチへ
-                let actualIsStarter = isStarter && starters.count < 11
+                // スタメン上限(10名・GK除く)に達している場合は強制的にベンチへ
+                let actualIsStarter = isStarter && starters.count < 10
                 let p = Player.from(roster: rosterPlayer, isStarter: actualIsStarter)
                 var m = match; m.players.append(p); appState.updateMatch(m)
             }
@@ -130,8 +130,8 @@ struct PlayerRegistrationView: View {
             ),
             titleVisibility: .visible
         ) {
-            // スタメン上限(11名)に達していない時のみスタメン追加可
-            if starters.count < 11 {
+            // スタメン上限(10名・GK除く)に達していない時のみスタメン追加可
+            if starters.count < 10 {
                 Button("スタメンに追加") {
                     if let rp = pendingRosterPlayer {
                         addRosterPlayerToMatch(rp, isStarter: true)
@@ -294,7 +294,7 @@ struct AddPlayerSheet: View {
                     } else {
                         HStack {
                             Image(systemName: "info.circle.fill").foregroundColor(.orange)
-                            Text("スタメンは11名に達しているためベンチに登録されます")
+                            Text("スタメンは10名(GK除く)に達しているためベンチに登録されます")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }

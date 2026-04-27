@@ -39,6 +39,8 @@ struct HexButtonConfig: Identifiable {
 struct HexButtonMenu: View {
     @Binding var player: Player
     let bench: [Player]
+    /// ライブレーティング（タイムロス反映）。nil の場合は player.rating（確定値）にフォールバック
+    var displayRating: Double? = nil
     let onSubstitute: (UUID) -> Void
     let onClose: () -> Void
 
@@ -140,8 +142,8 @@ struct HexButtonMenu: View {
                         StatEffect(keyPath:\.inter,   delta:1),
                         StatEffect(keyPath:\.tackles, delta:1)
                     ], color:Color.indigo),
-                    FlickOption(label:"+ 被ドリブル", angleDeg:180, effects:[
-                        StatEffect(keyPath:\.inter,  delta:1),
+                    // 被ドリブル：守備失敗のみを記録（インター加算しない）
+                    FlickOption(label:"被ドリブル", angleDeg:180, effects:[
                         StatEffect(keyPath:\.drbDef, delta:1)
                     ], color:Color.red)
                 ]
@@ -208,8 +210,10 @@ struct HexButtonMenu: View {
                     .zIndex(activeButtonId == config.id ? 100 : 1)
                 }
 
-                // ── 中央：選手パネル ──
-                CenterPlayerPanel(player: player, onClose: onClose)
+                // ── 中央：選手パネル（ライブレーティング表示） ──
+                CenterPlayerPanel(player: player,
+                                  displayRating: displayRating ?? player.rating,
+                                  onClose: onClose)
                     .position(x: centerX, y: centerY)
                     .zIndex(5)
 
@@ -476,6 +480,7 @@ struct HexagonShape: Shape {
 
 struct CenterPlayerPanel: View {
     let player: Player
+    let displayRating: Double   // ライブレーティング（呼び出し元から渡す）
     let onClose: () -> Void
     @State private var pulse = false
 
@@ -506,11 +511,11 @@ struct CenterPlayerPanel: View {
                     .foregroundColor(.white)
                     .lineLimit(1).minimumScaleFactor(0.6)
                     .frame(width: 92)
-                Text(String(format:"%.2f", player.rating))
+                Text(String(format:"%.2f", displayRating))
                     .font(.system(size:26, weight:.black, design:.rounded))
                     .foregroundColor(.white)
                     .shadow(color:.black.opacity(0.4), radius: 2)
-                Text(ratingLabel(player.rating))
+                Text(ratingLabel(displayRating))
                     .font(.system(size:8, weight:.heavy))
                     .foregroundColor(.white.opacity(0.8))
                 // カード警告（持っていれば表示）

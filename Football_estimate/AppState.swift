@@ -46,17 +46,90 @@ class AppState: ObservableObject {
     func updateMatch(_ m: Match) { if let i = matches.firstIndex(where:{$0.id==m.id}) { matches[i]=m } }
     func finishMatch(_ id: UUID) { if let i = matches.firstIndex(where:{$0.id==id}) { matches[i].isFinished=true } }
 
+    // ── 試合フェーズ遷移 ──
+    /// 前半開始：タイマー始動・現スタメン全員に開始時刻を打刻
+    func startFirstHalf(matchId: UUID) {
+        guard let mi = matches.firstIndex(where: { $0.id == matchId }) else { return }
+        let now = Date()
+        matches[mi].phase = .firstHalf
+        matches[mi].firstHalfStart = now
+        for i in matches[mi].players.indices where matches[mi].players[i].isStarter {
+            matches[mi].players[i].lastFieldEnterAt = now
+        }
+    }
+
+    /// 前半終了：ピッチ上選手の出場分数を確定し、ハーフタイムへ
+    func endFirstHalf(matchId: UUID) {
+        guard let mi = matches.firstIndex(where: { $0.id == matchId }) else { return }
+        let now = Date()
+        matches[mi].firstHalfEnd = now
+        for i in matches[mi].players.indices {
+            if let s = matches[mi].players[i].lastFieldEnterAt {
+                matches[mi].players[i].firstHalfMinutes += max(0, now.timeIntervalSince(s) / 60.0)
+                matches[mi].players[i].lastFieldEnterAt = nil
+            }
+        }
+        matches[mi].phase = .halfTime
+    }
+
+    /// 後半開始：現スタメンに開始時刻を打刻
+    func startSecondHalf(matchId: UUID) {
+        guard let mi = matches.firstIndex(where: { $0.id == matchId }) else { return }
+        let now = Date()
+        matches[mi].phase = .secondHalf
+        matches[mi].secondHalfStart = now
+        for i in matches[mi].players.indices where matches[mi].players[i].isStarter {
+            matches[mi].players[i].lastFieldEnterAt = now
+        }
+    }
+
+    /// 試合終了（後半終了）
+    func endSecondHalf(matchId: UUID) {
+        guard let mi = matches.firstIndex(where: { $0.id == matchId }) else { return }
+        let now = Date()
+        matches[mi].secondHalfEnd = now
+        for i in matches[mi].players.indices {
+            if let s = matches[mi].players[i].lastFieldEnterAt {
+                matches[mi].players[i].secondHalfMinutes += max(0, now.timeIntervalSince(s) / 60.0)
+                matches[mi].players[i].lastFieldEnterAt = nil
+            }
+        }
+        matches[mi].phase = .finished
+        matches[mi].isFinished = true
+    }
+
     // ── 選手交代（スタメンとベンチを入れ替え） ──
     // OUT した選手は wasSubstituted=true になり、その試合では再投入不可。
     // IN した選手は通常通り後で交代できる。
+    // 進行中フェーズなら出場時間を加算/打刻する。
     func substitutePlayer(matchId: UUID, outId: UUID, inId: UUID) {
         guard let mi = matches.firstIndex(where: { $0.id == matchId }) else { return }
+        let now = Date()
+        let phase = matches[mi].phase
+
+        // OUT 側
         if let oi = matches[mi].players.firstIndex(where: { $0.id == outId }) {
+            // 進行中なら出場時間を確定
+            if let s = matches[mi].players[oi].lastFieldEnterAt {
+                let mins = max(0, now.timeIntervalSince(s) / 60.0)
+                if phase == .firstHalf {
+                    matches[mi].players[oi].firstHalfMinutes += mins
+                } else if phase == .secondHalf {
+                    matches[mi].players[oi].secondHalfMinutes += mins
+                }
+                matches[mi].players[oi].lastFieldEnterAt = nil
+            }
             matches[mi].players[oi].isStarter = false
             matches[mi].players[oi].wasSubstituted = true
         }
+
+        // IN 側
         if let ii = matches[mi].players.firstIndex(where: { $0.id == inId }) {
             matches[mi].players[ii].isStarter = true
+            // 進行中なら開始時刻を打刻
+            if phase.isPlaying {
+                matches[mi].players[ii].lastFieldEnterAt = now
+            }
         }
     }
 

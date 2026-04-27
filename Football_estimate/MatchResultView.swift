@@ -6,10 +6,23 @@ import SwiftUI
 
 struct MatchResultView: View {
     let match: Match
-    var sortedPlayers: [Player] { match.players.filter{$0.isStarter}.sorted{$0.rating>$1.rating} }
+    // 出場記録のある全選手を出力対象に（先発OUTした選手も含める）
+    var sortedPlayers: [Player] {
+        match.players
+            .filter { $0.isStarter || $0.totalMinutes > 0 }
+            .sorted { $0.rating > $1.rating }
+    }
     var avgRating: Double {
         guard !sortedPlayers.isEmpty else { return 0 }
         return sortedPlayers.reduce(0.0){$0+$1.rating}/Double(sortedPlayers.count)
+    }
+    private var firstHalfDuration: String {
+        guard let s = match.firstHalfStart, let e = match.firstHalfEnd else { return "—" }
+        return formatMMSS(e.timeIntervalSince(s))
+    }
+    private var secondHalfDuration: String {
+        guard let s = match.secondHalfStart, let e = match.secondHalfEnd else { return "—" }
+        return formatMMSS(e.timeIntervalSince(s))
     }
     var body: some View {
         List {
@@ -19,6 +32,20 @@ struct MatchResultView: View {
                     Text(String(format:"%.2f",avgRating))
                         .font(.system(size:64,weight:.black,design:.rounded)).foregroundColor(ratingColor(avgRating))
                     Text(ratingLabel(avgRating)).font(.subheadline.weight(.semibold)).foregroundColor(ratingColor(avgRating).opacity(0.8))
+
+                    // ── 試合時間サマリー ──
+                    HStack(spacing:14) {
+                        VStack(spacing:2) {
+                            Text("前半").font(.caption2).foregroundColor(.secondary)
+                            Text(firstHalfDuration).font(.subheadline.weight(.heavy).monospacedDigit())
+                        }
+                        Divider().frame(height: 28)
+                        VStack(spacing:2) {
+                            Text("後半").font(.caption2).foregroundColor(.secondary)
+                            Text(secondHalfDuration).font(.subheadline.weight(.heavy).monospacedDigit())
+                        }
+                    }
+                    .padding(.top, 6)
                 }
                 .frame(maxWidth:.infinity).padding(.vertical,16).listRowBackground(Color(.secondarySystemBackground))
             }
@@ -36,6 +63,12 @@ struct MatchResultView: View {
                                 Text(player.position.fullLabel).font(.caption).foregroundColor(.secondary)
                                 if !player.height.isEmpty { Text("\(player.height)cm").font(.caption).foregroundColor(.secondary) }
                                 Text(player.foot.rawValue).font(.caption).foregroundColor(.secondary)
+                            }
+                            HStack(spacing:6) {
+                                Image(systemName:"timer").font(.caption2).foregroundColor(.secondary)
+                                Text("\(formatMinutes(player.totalMinutes))").font(.caption.monospacedDigit()).foregroundColor(.secondary)
+                                Text("(前\(formatMinutes(player.firstHalfMinutes)) / 後\(formatMinutes(player.secondHalfMinutes)))")
+                                    .font(.caption2.monospacedDigit()).foregroundColor(.secondary.opacity(0.8))
                             }
                         }
                         Spacer()

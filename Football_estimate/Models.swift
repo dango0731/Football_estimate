@@ -64,21 +64,44 @@ struct PlayerStats {
     var inter: Int = 0;  var clear: Int = 0;   var blocks: Int = 0
     var drbDef: Int = 0; var avgP: Int = 0;    var longB: Int = 0
     var disp: Int = 0;   var unsTch: Int = 0
+    // ── 反則 ──
+    var fouled: Int = 0  // 被ファウル（FW評価で +0.05）
+    var fouls:  Int = 0  // ファウル（評価式非影響、記録のみ）
     // ── カード（レーティング非影響） ──
     var yellowCards: Int = 0
     var redCards: Int = 0
 
-    func calculateRating(for position: Position) -> Double {
-        let g=Double(goals); let a=Double(assists); let s=Double(spg)
-        let do_=Double(drbOff); let kp=Double(keyP); let tk=Double(tackles)
-        let it=Double(inter); let bl=Double(blocks); let dd=Double(drbDef)
-        let ap=Double(avgP); let lb=Double(longB); let di=Double(disp); let ut=Double(unsTch)
-        var r: Double
+    /// 新評価式：score_new = 6.00 − Time_Loss(pos) × mins + Stat_Bonus(pos)
+    /// - Time_Loss(FW)=0.42/90, (MF)=0.39/90, (DF)=0.19/90 を mins に乗じて減点
+    /// - Stat_Bonus はポジション別に有意項目のみ加算
+    func calculateRating(for position: Position, mins: Double) -> Double {
+        let g  = Double(goals);  let a  = Double(assists); let s  = Double(spg)
+        let do_ = Double(drbOff); let kp = Double(keyP);    let tk = Double(tackles)
+        let it = Double(inter);  let bl = Double(blocks);  let dd = Double(drbDef)
+        let ap = Double(avgP)
+
+        // ── 時間減点（出場分数に比例、初期値 6.00 から差し引き） ──
+        let timeLossRate: Double
         switch position {
-        case .fw: r = 5.58+(0.41*g)+(0.61*a)+(0.22*s)+(0.12*do_)+(0.01*ap)-(0.05*di)-(0.04*ut)
-        case .mf: r = 5.61+(0.50*g)+(0.68*a)+(0.16*kp)+(0.15*it)+(0.13*tk)+(0.10*do_)+(0.004*ap)+(0.08*lb)
-        case .df: r = 5.81+(0.30*it)+(0.15*tk)+(0.67*g)+(0.50*a)+(0.17*kp)+(0.01*ap)+(0.21*bl)-(0.10*dd)
+        case .fw: timeLossRate = 0.42 / 90.0
+        case .mf: timeLossRate = 0.39 / 90.0
+        case .df: timeLossRate = 0.19 / 90.0
         }
+        let timeLoss = timeLossRate * max(0, mins)
+
+        // ── スタッツ加点（ポジション別に有意な項目のみ） ──
+        let statBonus: Double
+        switch position {
+        case .fw:
+            statBonus = 0.41*g + 0.61*a + 0.22*s + 0.12*do_
+        case .mf:
+            statBonus = 0.50*g + 0.68*a + 0.16*kp + 0.15*it + 0.13*tk
+        case .df:
+            statBonus = 0.30*it + 0.67*g + 0.50*a + 0.21*bl + 0.01*ap - 0.10*dd
+        }
+
+        var r = 6.00 - timeLoss + statBonus
+
         // ── カード減点（上限 -1.0：2Y=R 換算のため） ──
         // 1Y → -0.5、2Y or 1R → -1.0、それ以上は加算されない
         let cardPenalty = min(1.0, 0.5 * Double(yellowCards) + 1.0 * Double(redCards))
@@ -97,7 +120,64 @@ struct Player: Identifiable {
     var isStarter: Bool = true
     var wasSubstituted: Bool = false   // 交代でOUTした選手（再投入不可）
     var stats: PlayerStats = PlayerStats()
-    var rating: Double { stats.calculateRating(for: position) }
+
+    // ── 出場時間トラッキング ──
+    // 現在ピッチに立ち始めた時刻（nil = 控え/退場中）
+    var lastFieldEnterAt: Date? = nil
+    // 確定済み出場分数（交代/前半終了時点で加算）
+    var firstHalfMinutes: Double = 0
+    var secondHalfMinutes: Double = 0
+
+    var totalMinutes: Double { firstHalfMinutes + secondHalfMinutes }
+
+    /// 確定済みの出場分数で計算したレーティング（試合終了後・履歴表示用）
+    var rating: Double {
+        stats.calculateRating(for: position, mins: totalMinutes)
+    }
+
+    /// 現在進行中フェーズの経過分数を含む出場分数
+    func playMinutes(now: Date, phase: MatchPhase) -> Double {
+        var total = firstHalfMinutes + secondHalfMinutes
+        if phase.isPlaying, let s = lastFieldEnterAt {
+            total += max(0, now.timeIntervalSince(s) / 60.0)
+        }
+        return total
+    }
+
+    /// 試合中の進行込みレーティング（タイマー連動）
+    func liveRating(now: Date, phase: MatchPhase) -> Double {
+        stats.calculateRating(for: position, mins: playMinutes(now: now, phase: phase))
+    }
+
+    /// 現在進行中の前半分数（既存呼び出し互換）
+    func currentFirstHalfMinutes(now: Date, phase: MatchPhase) -> Double {
+        guard phase == .firstHalf, let s = lastFieldEnterAt else { return firstHalfMinutes }
+        return firstHalfMinutes + max(0, now.timeIntervalSince(s) / 60.0)
+    }
+    func currentSecondHalfMinutes(now: Date, phase: MatchPhase) -> Double {
+        guard phase == .secondHalf, let s = lastFieldEnterAt else { return secondHalfMinutes }
+        return secondHalfMinutes + max(0, now.timeIntervalSince(s) / 60.0)
+    }
+}
+
+// ── 試合フェーズ ──
+enum MatchPhase: Int, Codable {
+    case setup        = 0   // セットアップ（位置調整）
+    case firstHalf    = 1   // 前半進行中
+    case halfTime     = 2   // ハーフタイム（復習）
+    case secondHalf   = 3   // 後半進行中
+    case finished     = 4   // 試合終了
+
+    var label: String {
+        switch self {
+        case .setup:      return "セットアップ"
+        case .firstHalf:  return "前半"
+        case .halfTime:   return "ハーフタイム"
+        case .secondHalf: return "後半"
+        case .finished:   return "試合終了"
+        }
+    }
+    var isPlaying: Bool { self == .firstHalf || self == .secondHalf }
 }
 
 // マスターロスター選手（全試合で使い回せる基本情報・スタッツは持たない）
@@ -136,10 +216,48 @@ struct Match: Identifiable {
     var opponent: String
     var players: [Player] = []
     var isFinished: Bool = false
+
+    // ── 試合進行 ──
+    var phase: MatchPhase = .setup
+    var firstHalfStart: Date? = nil
+    var firstHalfEnd:   Date? = nil
+    var secondHalfStart: Date? = nil
+    var secondHalfEnd:   Date? = nil
+
     var dateString: String {
         let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short
         f.locale = Locale(identifier: "ja_JP"); return f.string(from: date)
     }
+
+    /// 現在のフェーズの経過秒（再生中はリアルタイム、それ以外は確定値）
+    func elapsedSeconds(now: Date) -> TimeInterval {
+        switch phase {
+        case .firstHalf:
+            guard let s = firstHalfStart else { return 0 }
+            return now.timeIntervalSince(s)
+        case .halfTime:
+            if let s = firstHalfStart, let e = firstHalfEnd { return e.timeIntervalSince(s) }
+            return 0
+        case .secondHalf:
+            guard let s = secondHalfStart else { return 0 }
+            return now.timeIntervalSince(s)
+        case .finished:
+            if let s = secondHalfStart, let e = secondHalfEnd { return e.timeIntervalSince(s) }
+            return 0
+        case .setup:
+            return 0
+        }
+    }
+}
+
+// MM:SS フォーマット（出場時間/タイマー表示用）
+func formatMMSS(_ seconds: TimeInterval) -> String {
+    let total = max(0, Int(seconds))
+    return String(format: "%02d:%02d", total / 60, total % 60)
+}
+// 分（小数）→ MM:SS フォーマット
+func formatMinutes(_ minutes: Double) -> String {
+    formatMMSS(minutes * 60.0)
 }
 
 // ── レーティング表示用ヘルパー ──
