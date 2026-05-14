@@ -314,3 +314,11 @@ struct PlayerSeasonStats {
     let ratings: [RatingEntry]
     let totals: PlayerStats
 }
+
+// ── チーム ──
+struct Team: Identifiable, Codable {
+    var id: UUID = UUID()
+    var name: String
+    var matches: [Match] = []
+    var roster: [RosterPlayer] = []
+}

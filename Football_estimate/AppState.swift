@@ -6,46 +6,117 @@ import Combine
 // ============================================================
 
 class AppState: ObservableObject {
+    // バインディング互換のため matches / roster を @Published で保持
     @Published var matches: [Match] = [] {
-        didSet { guard !isLoading else { return }; saveMatches() }
+        didSet { guard !isLoading else { return }; syncToCurrentTeam(); saveTeams() }
     }
     @Published var roster: [RosterPlayer] = [] {
-        didSet { guard !isLoading else { return }; saveRoster() }
+        didSet { guard !isLoading else { return }; syncToCurrentTeam(); saveTeams() }
     }
 
+    @Published var teams: [Team] = []
+    @Published var currentTeamId: UUID? = nil
+
     private var isLoading = false
-    private let matchesKey = "saved_matches"
-    private let rosterKey  = "saved_roster"
+    private let teamsKey = "saved_teams_v2"
 
     init() {
-        let isFirstLaunch = UserDefaults.standard.data(forKey: rosterKey) == nil
         isLoading = true
-        load()
+        loadTeams()
         isLoading = false
-        if isFirstLaunch {
-            roster = AppState.sampleRoster()
+
+        if teams.isEmpty {
+            let sample = Team(name: "〇〇高校サッカー部",
+                              roster: AppState.sampleRoster())
+            teams.append(sample)
+            saveTeams()
         }
+    }
+
+    // MARK: - チーム選択
+    func selectTeam(_ id: UUID) {
+        guard let t = teams.first(where: { $0.id == id }) else { return }
+        isLoading = true
+        currentTeamId = id
+        matches = t.matches
+        roster  = t.roster
+        isLoading = false
+    }
+
+    func deselectTeam() {
+        isLoading = true
+        currentTeamId = nil
+        matches = []
+        roster  = []
+        isLoading = false
+    }
+
+    var currentTeam: Team? {
+        guard let id = currentTeamId else { return nil }
+        return teams.first(where: { $0.id == id })
+    }
+
+    // MARK: - チーム CRUD
+    func addTeam(_ t: Team) {
+        teams.append(t)
+        saveTeams()
+    }
+
+    func updateTeamName(id: UUID, name: String) {
+        if let i = teams.firstIndex(where: { $0.id == id }) {
+            teams[i].name = name
+            saveTeams()
+        }
+    }
+
+    func deleteTeam(id: UUID) {
+        if currentTeamId == id { deselectTeam() }
+        teams.removeAll { $0.id == id }
+        saveTeams()
     }
 
     // MARK: - 永続化
-    private func saveMatches() {
-        if let data = try? JSONEncoder().encode(matches) {
-            UserDefaults.standard.set(data, forKey: matchesKey)
+    private func syncToCurrentTeam() {
+        guard let id = currentTeamId,
+              let i = teams.firstIndex(where: { $0.id == id }) else { return }
+        teams[i].matches = matches
+        teams[i].roster  = roster
+    }
+
+    private func saveTeams() {
+        if let data = try? JSONEncoder().encode(teams) {
+            UserDefaults.standard.set(data, forKey: teamsKey)
         }
     }
-    private func saveRoster() {
-        if let data = try? JSONEncoder().encode(roster) {
-            UserDefaults.standard.set(data, forKey: rosterKey)
+
+    private func loadTeams() {
+        // v2 キーから読み込み
+        if let data = UserDefaults.standard.data(forKey: teamsKey),
+           let decoded = try? JSONDecoder().decode([Team].self, from: data) {
+            teams = decoded
+            return
         }
-    }
-    private func load() {
-        if let data = UserDefaults.standard.data(forKey: matchesKey),
+        // 旧キーからマイグレーション
+        let oldMatchesKey = "saved_matches"
+        let oldRosterKey  = "saved_roster"
+        var migratedMatches: [Match] = []
+        var migratedRoster: [RosterPlayer] = []
+        if let data = UserDefaults.standard.data(forKey: oldMatchesKey),
            let decoded = try? JSONDecoder().decode([Match].self, from: data) {
-            matches = decoded
+            migratedMatches = decoded
         }
-        if let data = UserDefaults.standard.data(forKey: rosterKey),
+        if let data = UserDefaults.standard.data(forKey: oldRosterKey),
            let decoded = try? JSONDecoder().decode([RosterPlayer].self, from: data) {
-            roster = decoded
+            migratedRoster = decoded
+        }
+        if !migratedMatches.isEmpty || !migratedRoster.isEmpty {
+            let migrated = Team(name: "マイチーム",
+                                matches: migratedMatches,
+                                roster: migratedRoster)
+            teams = [migrated]
+            saveTeams()
+            UserDefaults.standard.removeObject(forKey: oldMatchesKey)
+            UserDefaults.standard.removeObject(forKey: oldRosterKey)
         }
     }
 
@@ -96,7 +167,6 @@ class AppState: ObservableObject {
     func finishMatch(_ id: UUID) { if let i = matches.firstIndex(where:{$0.id==id}) { matches[i].isFinished=true } }
 
     // ── 試合フェーズ遷移 ──
-    /// 前半開始：タイマー始動・現スタメン全員に開始時刻を打刻
     func startFirstHalf(matchId: UUID) {
         guard let mi = matches.firstIndex(where: { $0.id == matchId }) else { return }
         let now = Date()
@@ -107,7 +177,6 @@ class AppState: ObservableObject {
         }
     }
 
-    /// 前半終了：ピッチ上選手の出場分数を確定し、ハーフタイムへ
     func endFirstHalf(matchId: UUID) {
         guard let mi = matches.firstIndex(where: { $0.id == matchId }) else { return }
         let now = Date()
@@ -121,7 +190,6 @@ class AppState: ObservableObject {
         matches[mi].phase = .halfTime
     }
 
-    /// 後半開始：現スタメンに開始時刻を打刻
     func startSecondHalf(matchId: UUID) {
         guard let mi = matches.firstIndex(where: { $0.id == matchId }) else { return }
         let now = Date()
@@ -132,7 +200,6 @@ class AppState: ObservableObject {
         }
     }
 
-    /// 試合終了（後半終了）
     func endSecondHalf(matchId: UUID) {
         guard let mi = matches.firstIndex(where: { $0.id == matchId }) else { return }
         let now = Date()
@@ -147,18 +214,13 @@ class AppState: ObservableObject {
         matches[mi].isFinished = true
     }
 
-    // ── 選手交代（スタメンとベンチを入れ替え） ──
-    // OUT した選手は wasSubstituted=true になり、その試合では再投入不可。
-    // IN した選手は通常通り後で交代できる。
-    // 進行中フェーズなら出場時間を加算/打刻する。
+    // ── 選手交代 ──
     func substitutePlayer(matchId: UUID, outId: UUID, inId: UUID) {
         guard let mi = matches.firstIndex(where: { $0.id == matchId }) else { return }
         let now = Date()
         let phase = matches[mi].phase
 
-        // OUT 側
         if let oi = matches[mi].players.firstIndex(where: { $0.id == outId }) {
-            // 進行中なら出場時間を確定
             if let s = matches[mi].players[oi].lastFieldEnterAt {
                 let mins = max(0, now.timeIntervalSince(s) / 60.0)
                 if phase == .firstHalf {
@@ -172,10 +234,8 @@ class AppState: ObservableObject {
             matches[mi].players[oi].wasSubstituted = true
         }
 
-        // IN 側
         if let ii = matches[mi].players.firstIndex(where: { $0.id == inId }) {
             matches[mi].players[ii].isStarter = true
-            // 進行中なら開始時刻を打刻
             if phase.isPlaying {
                 matches[mi].players[ii].lastFieldEnterAt = now
             }
@@ -213,7 +273,7 @@ class AppState: ObservableObject {
               .sorted { $0.avgRating > $1.avgRating }
     }
 
-    // ── Roster管理（スナップショット方式：既存試合には影響しない） ──
+    // ── Roster管理 ──
     func addRosterPlayer(_ p: RosterPlayer) { roster.append(p) }
     func updateRosterPlayer(_ p: RosterPlayer) {
         if let i = roster.firstIndex(where: { $0.id == p.id }) { roster[i] = p }
@@ -221,7 +281,6 @@ class AppState: ObservableObject {
     func deleteRosterPlayer(id: UUID) {
         roster.removeAll { $0.id == id }
     }
-    // ポジション順・名前順でソート
     var sortedRoster: [RosterPlayer] {
         roster.sorted { a, b in
             if a.position.rawValue != b.position.rawValue { return a.position.rawValue < b.position.rawValue }
