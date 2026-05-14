@@ -141,8 +141,11 @@ struct SeasonStatsView: View {
                 }
             }
         }
-        .chartYScale(domain: max(1.0, (s.ratings.map(\.rating).min() ?? 4) - 0.5)...
-                              min(10.0, (s.ratings.map(\.rating).max() ?? 8) + 0.5))
+        .chartYScale(domain: {
+            let lo = max(1.0, (s.ratings.map(\.rating).min() ?? 4.0) - 0.5)
+            let hi = min(10.0, (s.ratings.map(\.rating).max() ?? 8.0) + 0.5)
+            return lo...hi
+        }())
         .chartYAxisLabel("レーティング")
     }
 
