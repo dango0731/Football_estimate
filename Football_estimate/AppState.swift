@@ -6,15 +6,64 @@ import Combine
 // ============================================================
 
 class AppState: ObservableObject {
-    @Published var matches: [Match] = []
-    @Published var roster: [RosterPlayer] = []   // マスターロスター
+    @Published var matches: [Match] = [] {
+        didSet { guard !isLoading else { return }; saveMatches() }
+    }
+    @Published var roster: [RosterPlayer] = [] {
+        didSet { guard !isLoading else { return }; saveRoster() }
+    }
+
+    private var isLoading = false
+    private let matchesKey = "saved_matches"
+    private let rosterKey  = "saved_roster"
 
     init() {
-        // 起動時、ロスターが空なら時短用のサンプル15人を投入。
-        // 不要になったらロスター管理画面から自由に削除できる。
-        if roster.isEmpty {
+        let isFirstLaunch = UserDefaults.standard.data(forKey: rosterKey) == nil
+        isLoading = true
+        load()
+        isLoading = false
+        if isFirstLaunch {
             roster = AppState.sampleRoster()
         }
+    }
+
+    // MARK: - 永続化
+    private func saveMatches() {
+        if let data = try? JSONEncoder().encode(matches) {
+            UserDefaults.standard.set(data, forKey: matchesKey)
+        }
+    }
+    private func saveRoster() {
+        if let data = try? JSONEncoder().encode(roster) {
+            UserDefaults.standard.set(data, forKey: rosterKey)
+        }
+    }
+    private func load() {
+        if let data = UserDefaults.standard.data(forKey: matchesKey),
+           let decoded = try? JSONDecoder().decode([Match].self, from: data) {
+            matches = decoded
+        }
+        if let data = UserDefaults.standard.data(forKey: rosterKey),
+           let decoded = try? JSONDecoder().decode([RosterPlayer].self, from: data) {
+            roster = decoded
+        }
+    }
+
+    // MARK: - スタッツ修正（詳細画面の編集モード用）
+    func updatePlayerStat(matchId: UUID, playerId: UUID,
+                          _ key: WritableKeyPath<PlayerStats, Int>, delta: Int) {
+        guard let mi = matches.firstIndex(where: { $0.id == matchId }),
+              let pi = matches[mi].players.firstIndex(where: { $0.id == playerId }) else { return }
+        let current = matches[mi].players[pi].stats[keyPath: key]
+        matches[mi].players[pi].stats[keyPath: key] = max(0, current + delta)
+    }
+    func updatePlayerCards(matchId: UUID, playerId: UUID, yellowDelta: Int, redDelta: Int) {
+        guard let mi = matches.firstIndex(where: { $0.id == matchId }),
+              let pi = matches[mi].players.firstIndex(where: { $0.id == playerId }) else { return }
+        matches[mi].players[pi].stats.yellowCards =
+            max(0, matches[mi].players[pi].stats.yellowCards + yellowDelta)
+        matches[mi].players[pi].stats.redCards =
+            max(0, matches[mi].players[pi].stats.redCards + redDelta)
     }
 
     // ── サンプルロスター（FW4 / MF6 / DF5 = 15人） ──

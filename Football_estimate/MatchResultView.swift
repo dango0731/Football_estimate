@@ -5,8 +5,13 @@ import SwiftUI
 // ============================================================
 
 struct MatchResultView: View {
-    let match: Match
-    // 出場記録のある全選手を出力対象に（先発OUTした選手も含める）
+    let matchId: UUID
+    @EnvironmentObject var appState: AppState
+
+    private var match: Match {
+        appState.matches.first(where: { $0.id == matchId }) ?? Match(opponent: "")
+    }
+
     var sortedPlayers: [Player] {
         match.players
             .filter { $0.isStarter || $0.totalMinutes > 0 }
@@ -24,6 +29,7 @@ struct MatchResultView: View {
         guard let s = match.secondHalfStart, let e = match.secondHalfEnd else { return "—" }
         return formatMMSS(e.timeIntervalSince(s))
     }
+
     var body: some View {
         List {
             Section {
@@ -33,7 +39,6 @@ struct MatchResultView: View {
                         .font(.system(size:64,weight:.black,design:.rounded)).foregroundColor(ratingColor(avgRating))
                     Text(ratingLabel(avgRating)).font(.subheadline.weight(.semibold)).foregroundColor(ratingColor(avgRating).opacity(0.8))
 
-                    // ── 試合時間サマリー ──
                     HStack(spacing:14) {
                         VStack(spacing:2) {
                             Text("前半").font(.caption2).foregroundColor(.secondary)
@@ -81,14 +86,46 @@ struct MatchResultView: View {
         .navigationTitle("vs \(match.opponent) 結果")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                ShareLink(
+                    item: generateCSV(),
+                    subject: Text("スタッツデータ"),
+                    message: Text("vs \(match.opponent) のスタッツデータです")
+                ) {
+                    Label("書き出し", systemImage: "square.and.arrow.up")
+                        .font(.subheadline.weight(.semibold))
+                }
                 NavigationLink {
-                    MatchStatsDetailView(match: match)
+                    MatchStatsDetailView(matchId: matchId)
                 } label: {
                     Label("詳細スタッツ", systemImage: "list.bullet.rectangle.portrait")
                         .font(.subheadline.weight(.semibold))
                 }
             }
         }
+    }
+
+    // MARK: - CSV 生成
+    private func generateCSV() -> String {
+        let header = "選手名,ポジション,出場時間(分),レーティング,Goal,Assist,Shot,Drb↑,KeyP,Tackle,Inter,Clear,Block,Drb↓,Pass,LongB,Disp,MisTch,Fouled,Foul,YC,RC"
+        let rows = sortedPlayers.map { p -> String in
+            let s = p.stats
+            let mins = String(format: "%.1f", p.totalMinutes)
+            let rating = String(format: "%.2f", p.rating)
+            let fields = [
+                escape(p.name), p.position.label, mins, rating,
+                "\(s.goals)", "\(s.assists)", "\(s.spg)", "\(s.drbOff)", "\(s.keyP)",
+                "\(s.tackles)", "\(s.inter)", "\(s.clear)", "\(s.blocks)", "\(s.drbDef)",
+                "\(s.avgP)", "\(s.longB)", "\(s.disp)", "\(s.unsTch)", "\(s.fouled)",
+                "\(s.fouls)", "\(s.yellowCards)", "\(s.redCards)"
+            ]
+            return fields.joined(separator: ",")
+        }
+        return ([header] + rows).joined(separator: "\n")
+    }
+
+    private func escape(_ s: String) -> String {
+        guard s.contains(",") || s.contains("\"") || s.contains("\n") else { return s }
+        return "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\""
     }
 }

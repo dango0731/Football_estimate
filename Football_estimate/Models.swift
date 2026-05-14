@@ -4,7 +4,7 @@ import SwiftUI
 // MARK: - MODELS（データモデル定義）
 // ============================================================
 
-enum Position: Int, CaseIterable, Identifiable {
+enum Position: Int, CaseIterable, Identifiable, Codable {
     case fw = 1, mf = 2, df = 3
     var id: Int { rawValue }
     var label: String { switch self { case .fw: return "FW"; case .mf: return "MF"; case .df: return "DF" } }
@@ -15,7 +15,7 @@ enum Position: Int, CaseIterable, Identifiable {
     var fieldYRatio: CGFloat { switch self { case .fw: return 0.20; case .mf: return 0.50; case .df: return 0.78 } }
 }
 
-enum Foot: String, CaseIterable { case right = "右足"; case left = "左足"; case both = "両足" }
+enum Foot: String, CaseIterable, Codable { case right = "右足"; case left = "左足"; case both = "両足" }
 
 // スタッツカテゴリ
 enum StatCategory: String, CaseIterable, Identifiable {
@@ -60,7 +60,7 @@ let passingItems: [StatItemDef] = [
     StatItemDef(label: "ファウル",     shortLabel: "Foul",   icon: "exclamationmark.triangle.fill", keyPath: \.fouls,  isNegative: true),
 ]
 
-struct PlayerStats {
+struct PlayerStats: Codable {
     var goals: Int = 0;  var assists: Int = 0; var spg: Int = 0
     var drbOff: Int = 0; var keyP: Int = 0;    var tackles: Int = 0
     var inter: Int = 0;  var clear: Int = 0;   var blocks: Int = 0
@@ -120,7 +120,7 @@ struct PlayerStats {
     }
 }
 
-struct Player: Identifiable {
+struct Player: Identifiable, Codable {
     let id: UUID = UUID()
     var rosterId: UUID? = nil     // マスターロスターとの紐付け（nil=一回限り）
     var name: String
@@ -191,7 +191,7 @@ enum MatchPhase: Int, Codable {
 }
 
 // マスターロスター選手（全試合で使い回せる基本情報・スタッツは持たない）
-struct RosterPlayer: Identifiable, Equatable {
+struct RosterPlayer: Identifiable, Equatable, Codable {
     let id: UUID
     var name: String
     var position: Position
@@ -220,7 +220,7 @@ extension Player {
     }
 }
 
-struct Match: Identifiable {
+struct Match: Identifiable, Codable {
     let id: UUID = UUID()
     var date: Date = Date()
     var opponent: String

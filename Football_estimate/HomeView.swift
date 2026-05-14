@@ -54,9 +54,8 @@ struct HomeView: View {
                     StatsCollectionView(matchId: id)
                         .environmentObject(appState)
                 case .result(let id):
-                    if let match = appState.matches.first(where: { $0.id == id }) {
-                        MatchResultView(match: match)
-                    }
+                    MatchResultView(matchId: id)
+                        .environmentObject(appState)
                 case .rosterManagement:
                     RosterManagementView()
                         .environmentObject(appState)

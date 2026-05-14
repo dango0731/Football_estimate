@@ -5,9 +5,14 @@ import SwiftUI
 // ============================================================
 
 struct MatchStatsDetailView: View {
-    let match: Match
+    let matchId: UUID
+    @EnvironmentObject var appState: AppState
+    @State private var isEditing = false
 
-    // スタメン優先 → レーティング降順
+    private var match: Match {
+        appState.matches.first(where: { $0.id == matchId }) ?? Match(opponent: "")
+    }
+
     private var sortedPlayers: [Player] {
         match.players.sorted { a, b in
             if a.isStarter != b.isStarter { return a.isStarter && !b.isStarter }
@@ -44,7 +49,6 @@ struct MatchStatsDetailView: View {
                                     }
                                     Text(player.foot.rawValue).font(.caption2).foregroundColor(.secondary)
                                 }
-                                // ── 出場時間 ──
                                 HStack(spacing: 4) {
                                     Image(systemName:"timer").font(.caption2).foregroundColor(.secondary)
                                     Text("計\(formatMinutes(player.totalMinutes))")
@@ -69,25 +73,10 @@ struct MatchStatsDetailView: View {
                         Divider()
 
                         // ── スタッツグリッド ──
-                        statsGrid(player.stats)
+                        statsGrid(player.stats, playerId: player.id)
 
-                        // ── カード（あれば表示） ──
-                        if player.stats.yellowCards > 0 || player.stats.redCards > 0 {
-                            HStack(spacing: 16) {
-                                if player.stats.yellowCards > 0 {
-                                    HStack(spacing: 4) {
-                                        Rectangle().fill(Color.yellow).frame(width: 12, height: 16).cornerRadius(2)
-                                        Text("× \(player.stats.yellowCards)").font(.caption.weight(.bold))
-                                    }
-                                }
-                                if player.stats.redCards > 0 {
-                                    HStack(spacing: 4) {
-                                        Rectangle().fill(Color.red).frame(width: 12, height: 16).cornerRadius(2)
-                                        Text("× \(player.stats.redCards)").font(.caption.weight(.bold))
-                                    }
-                                }
-                            }
-                        }
+                        // ── カード ──
+                        cardsSection(player)
                     }
                     .padding(.vertical, 4)
                 }
@@ -96,77 +85,160 @@ struct MatchStatsDetailView: View {
         .listStyle(.insetGrouped)
         .navigationTitle("詳細スタッツ")
         .navigationBarTitleDisplayMode(.inline)
-    }
-
-    // ── スタッツの3列グリッド ──
-    @ViewBuilder
-    private func statsGrid(_ s: PlayerStats) -> some View {
-        VStack(spacing: 6) {
-            statRow([
-                StatCell(label: "⚽️ Goal",  value: s.goals,   tint: .red),
-                StatCell(label: "Assist",   value: s.assists, tint: .yellow),
-                StatCell(label: "Shot",     value: s.spg,     tint: .orange),
-            ])
-            statRow([
-                StatCell(label: "Drb↑",    value: s.drbOff,  tint: .green),
-                StatCell(label: "KeyP",     value: s.keyP,    tint: .cyan),
-                StatCell(label: "Pass",     value: s.avgP,    tint: .blue),
-            ])
-            statRow([
-                StatCell(label: "Tackle",   value: s.tackles, tint: .indigo),
-                StatCell(label: "Inter",    value: s.inter,   tint: .blue),
-                StatCell(label: "Block",    value: s.blocks,  tint: .cyan),
-            ])
-            statRow([
-                StatCell(label: "Clear",    value: s.clear,   tint: .yellow),
-                StatCell(label: "LongB",    value: s.longB,   tint: .orange),
-                StatCell(label: "Drb↓",    value: s.drbDef,  tint: .red),
-            ])
-            statRow([
-                StatCell(label: "Disp",     value: s.disp,    tint: .red),
-                StatCell(label: "MisTch",   value: s.unsTch,  tint: .orange),
-                StatCell(label: "Fouled",   value: s.fouled,  tint: .green),
-            ])
-            statRow([
-                StatCell(label: "Foul",     value: s.fouls,   tint: .red),
-                nil,
-                nil,
-            ])
-        }
-    }
-
-    @ViewBuilder
-    private func statRow(_ cells: [StatCell?]) -> some View {
-        HStack(spacing: 8) {
-            ForEach(cells.indices, id: \.self) { i in
-                if let cell = cells[i] {
-                    HStack(spacing: 4) {
-                        Text(cell.label)
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                        Spacer(minLength: 2)
-                        Text("\(cell.value)")
-                            .font(.system(.callout, design: .rounded).weight(.bold))
-                            .foregroundColor(cell.value > 0 ? cell.tint : .secondary.opacity(0.6))
-                    }
-                    .padding(.horizontal, 8).padding(.vertical, 5)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color(.tertiarySystemBackground))
-                    )
-                } else {
-                    Color.clear.frame(maxWidth: .infinity)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(isEditing ? "完了" : "編集") {
+                    withAnimation { isEditing.toggle() }
                 }
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(isEditing ? .green : .blue)
             }
         }
     }
-}
 
-// 内部用：スタッツ1セルのデータ
-private struct StatCell {
-    let label: String
-    let value: Int
-    let tint: Color
+    // MARK: - スタッツグリッド
+    @ViewBuilder
+    private func statsGrid(_ s: PlayerStats, playerId: UUID) -> some View {
+        VStack(spacing: 6) {
+            statRow3(playerId: playerId,
+                c1: ("⚽️ Goal", s.goals, Color.red,     \.goals),
+                c2: ("Assist",   s.assists, Color.yellow, \.assists),
+                c3: ("Shot",     s.spg,     Color.orange, \.spg))
+            statRow3(playerId: playerId,
+                c1: ("Drb↑",   s.drbOff, Color.green,  \.drbOff),
+                c2: ("KeyP",    s.keyP,   Color.cyan,   \.keyP),
+                c3: ("Pass",    s.avgP,   Color.blue,   \.avgP))
+            statRow3(playerId: playerId,
+                c1: ("Tackle",  s.tackles, Color.indigo, \.tackles),
+                c2: ("Inter",   s.inter,   Color.blue,   \.inter),
+                c3: ("Block",   s.blocks,  Color.cyan,   \.blocks))
+            statRow3(playerId: playerId,
+                c1: ("Clear",   s.clear,   Color.yellow, \.clear),
+                c2: ("LongB",   s.longB,   Color.orange, \.longB),
+                c3: ("Drb↓",   s.drbDef,  Color.red,    \.drbDef))
+            statRow3(playerId: playerId,
+                c1: ("Disp",    s.disp,    Color.red,    \.disp),
+                c2: ("MisTch",  s.unsTch,  Color.orange, \.unsTch),
+                c3: ("Fouled",  s.fouled,  Color.green,  \.fouled))
+            HStack(spacing: 8) {
+                statCell("Foul", value: s.fouls, tint: .red, playerId: playerId, key: \.fouls)
+                Color.clear.frame(maxWidth: .infinity)
+                Color.clear.frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func statRow3(
+        playerId: UUID,
+        c1: (String, Int, Color, WritableKeyPath<PlayerStats, Int>),
+        c2: (String, Int, Color, WritableKeyPath<PlayerStats, Int>),
+        c3: (String, Int, Color, WritableKeyPath<PlayerStats, Int>)
+    ) -> some View {
+        HStack(spacing: 8) {
+            statCell(c1.0, value: c1.1, tint: c1.2, playerId: playerId, key: c1.3)
+            statCell(c2.0, value: c2.1, tint: c2.2, playerId: playerId, key: c2.3)
+            statCell(c3.0, value: c3.1, tint: c3.2, playerId: playerId, key: c3.3)
+        }
+    }
+
+    @ViewBuilder
+    private func statCell(
+        _ label: String, value: Int, tint: Color,
+        playerId: UUID, key: WritableKeyPath<PlayerStats, Int>
+    ) -> some View {
+        if isEditing {
+            VStack(spacing: 3) {
+                Text(label).font(.caption2).foregroundColor(.secondary).lineLimit(1)
+                HStack(spacing: 6) {
+                    Button {
+                        appState.updatePlayerStat(matchId: matchId, playerId: playerId, key, delta: -1)
+                    } label: {
+                        Image(systemName: "minus.circle.fill")
+                            .foregroundColor(value > 0 ? .secondary : .secondary.opacity(0.25))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(value == 0)
+
+                    Text("\(value)")
+                        .font(.system(.callout, design: .rounded).weight(.bold))
+                        .foregroundColor(value > 0 ? tint : .secondary.opacity(0.5))
+                        .frame(minWidth: 22)
+
+                    Button {
+                        appState.updatePlayerStat(matchId: matchId, playerId: playerId, key, delta: +1)
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundColor(tint.opacity(0.8))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 6).padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color(.systemBackground)))
+            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(tint.opacity(0.25), lineWidth: 1))
+        } else {
+            HStack(spacing: 4) {
+                Text(label).font(.caption2).foregroundColor(.secondary).lineLimit(1)
+                Spacer(minLength: 2)
+                Text("\(value)")
+                    .font(.system(.callout, design: .rounded).weight(.bold))
+                    .foregroundColor(value > 0 ? tint : .secondary.opacity(0.6))
+            }
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color(.tertiarySystemBackground)))
+        }
+    }
+
+    // MARK: - カードセクション
+    @ViewBuilder
+    private func cardsSection(_ player: Player) -> some View {
+        let s = player.stats
+        if s.yellowCards > 0 || s.redCards > 0 || isEditing {
+            HStack(spacing: 20) {
+                cardControl(
+                    color: .yellow, count: s.yellowCards,
+                    playerId: player.id,
+                    onMinus: { appState.updatePlayerCards(matchId: matchId, playerId: player.id, yellowDelta: -1, redDelta: 0) },
+                    onPlus:  { appState.updatePlayerCards(matchId: matchId, playerId: player.id, yellowDelta: +1, redDelta: 0) }
+                )
+                cardControl(
+                    color: .red, count: s.redCards,
+                    playerId: player.id,
+                    onMinus: { appState.updatePlayerCards(matchId: matchId, playerId: player.id, yellowDelta: 0, redDelta: -1) },
+                    onPlus:  { appState.updatePlayerCards(matchId: matchId, playerId: player.id, yellowDelta: 0, redDelta: +1) }
+                )
+                Spacer()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func cardControl(
+        color: Color, count: Int, playerId: UUID,
+        onMinus: @escaping () -> Void, onPlus: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: isEditing ? 6 : 4) {
+            if isEditing {
+                Button(action: onMinus) {
+                    Image(systemName: "minus.circle.fill")
+                        .foregroundColor(count > 0 ? .secondary : .secondary.opacity(0.25))
+                }
+                .buttonStyle(.plain).disabled(count == 0)
+            }
+            Rectangle().fill(color).frame(width: 12, height: 16).cornerRadius(2)
+            Text("× \(count)").font(.caption.weight(.bold))
+            if isEditing {
+                Button(action: onPlus) {
+                    Image(systemName: "plus.circle.fill").foregroundColor(color.opacity(0.8))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
 }
