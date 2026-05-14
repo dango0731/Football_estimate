@@ -10,6 +10,7 @@ struct HomeView: View {
     @State private var navPath = NavigationPath()
     @State private var editingRosterPlayer: RosterPlayer? = nil
     @State private var showAddRosterSheet: Bool = false
+    @State private var showFormula = false
 
     var body: some View {
         NavigationStack(path: $navPath) {
@@ -23,6 +24,14 @@ struct HomeView: View {
                             Text("試合スタッツ管理").font(.subheadline).foregroundColor(.secondary)
                         }
                         Spacer()
+                        Button { showFormula = true } label: {
+                            Image(systemName: "function")
+                                .font(.title3.weight(.bold))
+                                .foregroundColor(.purple)
+                                .frame(width: 40, height: 40)
+                                .background(Color.purple.opacity(0.12))
+                                .clipShape(Circle())
+                        }
                         Button { showNewMatch = true } label: {
                             Label("新しい試合", systemImage: "plus.circle.fill")
                                 .font(.headline.weight(.bold))
@@ -40,6 +49,9 @@ struct HomeView: View {
 
                             // ── 試合一覧セクション ──
                             matchListSection
+
+                            // ── 通算ランキングセクション ──
+                            seasonRankingSection
                         }
                         .padding(.bottom, 40)
                     }
@@ -58,6 +70,9 @@ struct HomeView: View {
                         .environmentObject(appState)
                 case .rosterManagement:
                     RosterManagementView()
+                        .environmentObject(appState)
+                case .seasonStats(let rosterId):
+                    SeasonStatsView(rosterId: rosterId)
                         .environmentObject(appState)
                 }
             }
@@ -82,6 +97,9 @@ struct HomeView: View {
                 } onDelete: {
                     appState.deleteRosterPlayer(id: target.id)
                 }
+            }
+            .sheet(isPresented: $showFormula) {
+                FormulaView()
             }
         }
     }
@@ -221,6 +239,89 @@ struct HomeView: View {
                 .padding(.horizontal, 20)
             }
         }
+    }
+
+    // ── 通算ランキングセクション ──
+    private var seasonRankingSection: some View {
+        let stats = appState.allSeasonStats
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.subheadline.weight(.bold)).foregroundColor(.purple)
+                Text("通算ランキング").font(.headline.weight(.bold))
+                Text("\(stats.count)名")
+                    .font(.caption.weight(.semibold)).foregroundColor(.secondary)
+                    .padding(.horizontal, 8).padding(.vertical, 2)
+                    .background(Color.secondary.opacity(0.15)).clipShape(Capsule())
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+
+            if stats.isEmpty {
+                Text("試合を終了すると通算スタッツが表示されます")
+                    .font(.caption).foregroundColor(.secondary)
+                    .padding(.horizontal, 20).padding(.vertical, 12)
+            } else {
+                LazyVStack(spacing: 8) {
+                    ForEach(Array(stats.enumerated()), id: \.element.rosterPlayer.id) { idx, s in
+                        Button {
+                            navPath.append(NavRoute.seasonStats(s.rosterPlayer.id))
+                        } label: {
+                            SeasonRankRow(rank: idx + 1, stats: s)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+        }
+    }
+}
+
+// ── 通算ランキング行 ──
+struct SeasonRankRow: View {
+    let rank: Int
+    let stats: PlayerSeasonStats
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(rank <= 3 ? ["🥇","🥈","🥉"][rank-1] : "\(rank)")
+                .font(.subheadline.weight(.bold)).frame(width: 28)
+            ZStack {
+                Circle().fill(stats.rosterPlayer.position.color.opacity(0.15))
+                    .frame(width: 36, height: 36)
+                Image(systemName: stats.rosterPlayer.position.icon)
+                    .foregroundColor(stats.rosterPlayer.position.color)
+                    .font(.system(size: 14, weight: .semibold))
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(stats.rosterPlayer.name).font(.subheadline.weight(.semibold))
+                HStack(spacing: 6) {
+                    Text(stats.rosterPlayer.position.label)
+                        .font(.caption2.weight(.bold))
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(Capsule().fill(stats.rosterPlayer.position.color.opacity(0.15)))
+                        .foregroundColor(stats.rosterPlayer.position.color)
+                    Text("\(stats.matchCount)試合")
+                        .font(.caption2).foregroundColor(.secondary)
+                    Text(String(format: "%.0f分", stats.totalMinutes))
+                        .font(.caption2).foregroundColor(.secondary)
+                }
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(String(format: "%.2f", stats.avgRating))
+                    .font(.title3.weight(.black))
+                    .foregroundColor(ratingColor(stats.avgRating))
+                Text("平均").font(.caption2).foregroundColor(.secondary)
+            }
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold)).foregroundColor(.secondary)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+        )
     }
 }
 

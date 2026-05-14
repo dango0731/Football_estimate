@@ -121,7 +121,7 @@ struct PlayerStats: Codable {
 }
 
 struct Player: Identifiable, Codable {
-    let id: UUID = UUID()
+    var id: UUID = UUID()
     var rosterId: UUID? = nil     // マスターロスターとの紐付け（nil=一回限り）
     var name: String
     var position: Position
@@ -221,7 +221,7 @@ extension Player {
 }
 
 struct Match: Identifiable, Codable {
-    let id: UUID = UUID()
+    var id: UUID = UUID()
     var date: Date = Date()
     var opponent: String
     var players: [Player] = []
@@ -283,4 +283,34 @@ extension Comparable {
     func clamped(to range: ClosedRange<Self>) -> Self {
         min(max(self, range.lowerBound), range.upperBound)
     }
+}
+
+// ── 通算スタッツ集計 ──
+extension PlayerStats {
+    mutating func add(_ other: PlayerStats) {
+        goals += other.goals;  assists += other.assists; spg += other.spg
+        drbOff += other.drbOff; keyP += other.keyP;   tackles += other.tackles
+        inter += other.inter;  clear += other.clear;   blocks += other.blocks
+        drbDef += other.drbDef; avgP += other.avgP;    longB += other.longB
+        disp += other.disp;    unsTch += other.unsTch; fouled += other.fouled
+        fouls += other.fouls;  yellowCards += other.yellowCards
+        redCards += other.redCards
+    }
+}
+
+struct RatingEntry: Identifiable {
+    let id = UUID()
+    let index: Int
+    let opponent: String
+    let date: Date
+    let rating: Double
+}
+
+struct PlayerSeasonStats {
+    let rosterPlayer: RosterPlayer
+    let matchCount: Int
+    let totalMinutes: Double
+    let avgRating: Double
+    let ratings: [RatingEntry]
+    let totals: PlayerStats
 }

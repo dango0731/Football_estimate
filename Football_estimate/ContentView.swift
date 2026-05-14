@@ -18,6 +18,7 @@ enum NavRoute: Hashable {
     case statsCollection(UUID)  // スタッツ収集画面
     case result(UUID)           // 試合結果画面
     case rosterManagement       // ロスター管理画面
+    case seasonStats(UUID)      // 選手通算スタッツ（rosterId）
 }
 
 // ============================================================

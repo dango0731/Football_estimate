@@ -182,6 +182,37 @@ class AppState: ObservableObject {
         }
     }
 
+    // MARK: - 通算スタッツ（終了試合を全集計）
+    func seasonStats(for rosterId: UUID) -> PlayerSeasonStats? {
+        guard let rp = roster.first(where: { $0.id == rosterId }) else { return nil }
+        let entries: [(Date, String, Player)] = matches
+            .filter { $0.isFinished }
+            .compactMap { m in
+                guard let p = m.players.first(where: { $0.rosterId == rosterId }),
+                      p.totalMinutes > 0 else { return nil }
+                return (m.date, m.opponent, p)
+            }
+            .sorted { $0.0 < $1.0 }
+        guard !entries.isEmpty else { return nil }
+
+        var totals = PlayerStats()
+        var totalMinutes: Double = 0
+        let ratings = entries.enumerated().map { i, e -> RatingEntry in
+            totals.add(e.2.stats)
+            totalMinutes += e.2.totalMinutes
+            return RatingEntry(index: i + 1, opponent: e.1, date: e.0, rating: e.2.rating)
+        }
+        let avg = ratings.map(\.rating).reduce(0, +) / Double(ratings.count)
+        return PlayerSeasonStats(rosterPlayer: rp, matchCount: entries.count,
+                                 totalMinutes: totalMinutes, avgRating: avg,
+                                 ratings: ratings, totals: totals)
+    }
+
+    var allSeasonStats: [PlayerSeasonStats] {
+        roster.compactMap { seasonStats(for: $0.id) }
+              .sorted { $0.avgRating > $1.avgRating }
+    }
+
     // ── Roster管理（スナップショット方式：既存試合には影響しない） ──
     func addRosterPlayer(_ p: RosterPlayer) { roster.append(p) }
     func updateRosterPlayer(_ p: RosterPlayer) {
