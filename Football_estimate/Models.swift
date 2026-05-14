@@ -226,6 +226,9 @@ struct Match: Identifiable, Codable {
     var opponent: String
     var players: [Player] = []
     var isFinished: Bool = false
+    var opponentScore: Int? = nil
+
+    var ourScore: Int { players.reduce(0) { $0 + $1.stats.goals } }
 
     // ── 試合進行 ──
     var phase: MatchPhase = .setup

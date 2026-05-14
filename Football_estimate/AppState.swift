@@ -161,6 +161,12 @@ class AppState: ObservableObject {
         ]
     }
 
+    func updateOpponentScore(matchId: UUID, score: Int) {
+        if let i = matches.firstIndex(where: { $0.id == matchId }) {
+            matches[i].opponentScore = max(0, score)
+        }
+    }
+
     // ── Match管理 ──
     func addMatch(_ m: Match) { matches.insert(m, at: 0) }
     func updateMatch(_ m: Match) { if let i = matches.firstIndex(where:{$0.id==m.id}) { matches[i]=m } }
