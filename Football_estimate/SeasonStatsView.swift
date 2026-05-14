@@ -150,33 +150,28 @@ struct SeasonStatsView: View {
     }
 
     // MARK: - ポジション内比較（棒グラフ）
+    private func makeCompareData(_ s: PlayerSeasonStats) -> [CompareBarEntry] {
+        let pos = s.rosterPlayer.position
+        let posPlayers = appState.allSeasonStats.filter { $0.rosterPlayer.position == pos }
+        let posAvgRating = posPlayers.isEmpty ? 0.0 :
+            posPlayers.map(\.avgRating).reduce(0, +) / Double(posPlayers.count)
+        let mins = max(1.0, s.totalMinutes)
+        let defs: [(String, Double, Double)] = [
+            ("評価",     s.avgRating,                             posAvgRating),
+            ("G/90",    Double(s.totals.goals)   / mins * 90,   posAvgGoals(pos: pos, key: \.goals)),
+            ("A/90",    Double(s.totals.assists) / mins * 90,   posAvgGoals(pos: pos, key: \.assists)),
+            ("Shot/90", Double(s.totals.spg)     / mins * 90,   posAvgGoals(pos: pos, key: \.spg)),
+        ]
+        return defs.flatMap { label, myVal, avgVal in [
+            CompareBarEntry(label: label, value: myVal,  kind: "選手"),
+            CompareBarEntry(label: label, value: avgVal, kind: "ポジ平均"),
+        ]}
+    }
+
     @ViewBuilder
     private func positionCompareChart(_ s: PlayerSeasonStats) -> some View {
         let pos = s.rosterPlayer.position
-        let posPlayers = appState.allSeasonStats.filter { $0.rosterPlayer.position == pos }
-        let posAvgRating = posPlayers.isEmpty ? 0 :
-            posPlayers.map(\.avgRating).reduce(0, +) / Double(posPlayers.count)
-
-        // 主要スタッツ（90分換算）で比較
-        let mins = max(1, s.totalMinutes)
-        let compareDefs: [(String, Double, Double)] = [
-            ("評価",   s.avgRating,                  posAvgRating),
-            ("G/90",  Double(s.totals.goals)   / mins * 90, posAvgGoals(pos: pos, key: \.goals)),
-            ("A/90",  Double(s.totals.assists)  / mins * 90, posAvgGoals(pos: pos, key: \.assists)),
-            ("Shot/90", Double(s.totals.spg)   / mins * 90, posAvgGoals(pos: pos, key: \.spg)),
-        ]
-
-        struct BarEntry: Identifiable {
-            let id = UUID()
-            let label: String
-            let value: Double
-            let kind: String
-        }
-        let barData: [BarEntry] = compareDefs.flatMap { label, myVal, avgVal in [
-            BarEntry(label: label, value: myVal,  kind: "選手"),
-            BarEntry(label: label, value: avgVal, kind: "ポジ平均"),
-        ]}
-
+        let barData = makeCompareData(s)
         Chart(barData) { item in
             BarMark(
                 x: .value("スタッツ", item.label),
@@ -273,4 +268,11 @@ struct SeasonStatsView: View {
         .padding(.horizontal, 6).padding(.vertical, 4)
         .background(RoundedRectangle(cornerRadius: 6).fill(color.opacity(0.10)))
     }
+}
+
+private struct CompareBarEntry: Identifiable {
+    let id = UUID()
+    let label: String
+    let value: Double
+    let kind: String
 }
