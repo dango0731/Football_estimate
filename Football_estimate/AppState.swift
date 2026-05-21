@@ -141,29 +141,34 @@ class AppState: ObservableObject {
     static func sampleRoster() -> [RosterPlayer] {
         [
             // ── FW（4人） ──
-            RosterPlayer(name: "田中 翔",   position: .fw, height: "178", foot: .right),
-            RosterPlayer(name: "山田 蓮",   position: .fw, height: "175", foot: .left),
-            RosterPlayer(name: "鈴木 大輝", position: .fw, height: "182", foot: .right),
-            RosterPlayer(name: "高橋 颯",   position: .fw, height: "173", foot: .both),
+            RosterPlayer(name: "田中 翔",   number: 9,  position: .fw, height: "178", foot: .right),
+            RosterPlayer(name: "山田 蓮",   number: 11, position: .fw, height: "175", foot: .left),
+            RosterPlayer(name: "鈴木 大輝", number: 18, position: .fw, height: "182", foot: .right),
+            RosterPlayer(name: "高橋 颯",   number: 7,  position: .fw, height: "173", foot: .both),
             // ── MF（6人） ──
-            RosterPlayer(name: "佐藤 陸",   position: .mf, height: "172", foot: .right),
-            RosterPlayer(name: "中村 海斗", position: .mf, height: "170", foot: .left),
-            RosterPlayer(name: "伊藤 颯太", position: .mf, height: "174", foot: .right),
-            RosterPlayer(name: "渡辺 悠真", position: .mf, height: "168", foot: .both),
-            RosterPlayer(name: "小林 蒼",   position: .mf, height: "176", foot: .right),
-            RosterPlayer(name: "加藤 樹",   position: .mf, height: "171", foot: .left),
+            RosterPlayer(name: "佐藤 陸",   number: 8,  position: .mf, height: "172", foot: .right),
+            RosterPlayer(name: "中村 海斗", number: 10, position: .mf, height: "170", foot: .left),
+            RosterPlayer(name: "伊藤 颯太", number: 6,  position: .mf, height: "174", foot: .right),
+            RosterPlayer(name: "渡辺 悠真", number: 14, position: .mf, height: "168", foot: .both),
+            RosterPlayer(name: "小林 蒼",   number: 17, position: .mf, height: "176", foot: .right),
+            RosterPlayer(name: "加藤 樹",   number: 16, position: .mf, height: "171", foot: .left),
             // ── DF（5人） ──
-            RosterPlayer(name: "山本 健",   position: .df, height: "183", foot: .right),
-            RosterPlayer(name: "吉田 大樹", position: .df, height: "180", foot: .right),
-            RosterPlayer(name: "松本 涼",   position: .df, height: "178", foot: .left),
-            RosterPlayer(name: "井上 拓海", position: .df, height: "185", foot: .right),
-            RosterPlayer(name: "木村 隼人", position: .df, height: "177", foot: .both),
+            RosterPlayer(name: "山本 健",   number: 4,  position: .df, height: "183", foot: .right),
+            RosterPlayer(name: "吉田 大樹", number: 5,  position: .df, height: "180", foot: .right),
+            RosterPlayer(name: "松本 涼",   number: 3,  position: .df, height: "178", foot: .left),
+            RosterPlayer(name: "井上 拓海", number: 2,  position: .df, height: "185", foot: .right),
+            RosterPlayer(name: "木村 隼人", number: 15, position: .df, height: "177", foot: .both),
         ]
     }
 
-    func updateOpponentScore(matchId: UUID, score: Int) {
+    /// 相手スコアを手動編集。score=nil で手動値をクリア（失点記録から自動算出に戻す）
+    func updateOpponentScore(matchId: UUID, score: Int?) {
         if let i = matches.firstIndex(where: { $0.id == matchId }) {
-            matches[i].opponentScore = max(0, score)
+            if let s = score {
+                matches[i].opponentScore = max(0, s)
+            } else {
+                matches[i].opponentScore = nil
+            }
         }
     }
 
@@ -171,6 +176,7 @@ class AppState: ObservableObject {
     func addMatch(_ m: Match) { matches.insert(m, at: 0) }
     func updateMatch(_ m: Match) { if let i = matches.firstIndex(where:{$0.id==m.id}) { matches[i]=m } }
     func finishMatch(_ id: UUID) { if let i = matches.firstIndex(where:{$0.id==id}) { matches[i].isFinished=true } }
+    func deleteMatch(id: UUID) { matches.removeAll { $0.id == id } }
 
     // ── 試合フェーズ遷移 ──
     func startFirstHalf(matchId: UUID) {
@@ -218,6 +224,38 @@ class AppState: ObservableObject {
         }
         matches[mi].phase = .finished
         matches[mi].isFinished = true
+    }
+
+    // ── 失点イベントを記録（ピッチ上選手にパターン別ペナルティを自動適用） ──
+    func recordConcession(matchId: UUID,
+                          pattern: ConcessionPattern,
+                          primaryBlameId: UUID? = nil) {
+        guard let mi = matches.firstIndex(where: { $0.id == matchId }) else { return }
+        let phase = matches[mi].phase
+        let halfNumber: Int
+        switch phase {
+        case .firstHalf:  halfNumber = 1
+        case .halfTime:   halfNumber = 1   // ハーフタイム中の登録は前半扱い
+        case .secondHalf: halfNumber = 2
+        case .finished:   halfNumber = 2
+        default:          halfNumber = 1
+        }
+
+        // 失点時にピッチ上にいる選手を抽出（途中交代済み・退場済みは除外）
+        let onField = matches[mi].players.filter {
+            $0.isStarter && !$0.wasSubstituted
+        }
+        let onFieldIds = onField.map { $0.id }
+
+        // イベント記録のみ（評価式には影響させない方針）
+        let event = ConcessionEvent(
+            time: Date(),
+            halfNumber: halfNumber,
+            pattern: pattern,
+            primaryBlameId: primaryBlameId,
+            onFieldIds: onFieldIds
+        )
+        matches[mi].concessions.append(event)
     }
 
     // ── 選手交代 ──

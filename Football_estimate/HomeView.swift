@@ -11,6 +11,7 @@ struct HomeView: View {
     @State private var editingRosterPlayer: RosterPlayer? = nil
     @State private var showAddRosterSheet: Bool = false
     @State private var showFormula = false
+    @State private var matchToDelete: Match? = nil
 
     var body: some View {
         NavigationStack(path: $navPath) {
@@ -113,6 +114,23 @@ struct HomeView: View {
             }
             .sheet(isPresented: $showFormula) {
                 FormulaView()
+            }
+            .alert(
+                "試合を削除しますか？",
+                isPresented: Binding(
+                    get: { matchToDelete != nil },
+                    set: { if !$0 { matchToDelete = nil } }
+                )
+            ) {
+                Button("削除", role: .destructive) {
+                    if let m = matchToDelete { appState.deleteMatch(id: m.id) }
+                    matchToDelete = nil
+                }
+                Button("キャンセル", role: .cancel) { matchToDelete = nil }
+            } message: {
+                if let m = matchToDelete {
+                    Text("「vs \(m.opponent)」のデータをすべて削除します。この操作は元に戻せません。")
+                }
             }
         }
     }
@@ -243,7 +261,15 @@ struct HomeView: View {
                             }
                         } label: {
                             MatchRowCard(match: match)
-                        }.buttonStyle(.plain)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                matchToDelete = match
+                            } label: {
+                                Label("試合を削除", systemImage: "trash.fill")
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal, 20)
@@ -382,9 +408,15 @@ struct RosterChip: View {
                     ))
                     .frame(width: 50, height: 50)
                     .shadow(color: player.position.color.opacity(0.4), radius: 4, x: 0, y: 2)
-                Image(systemName: player.position.icon)
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(.white)
+                if let n = player.numberText {
+                    Text(n)
+                        .font(.system(size: 22, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                } else {
+                    Image(systemName: player.position.icon)
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.white)
+                }
                 VStack {
                     HStack {
                         Spacer()
