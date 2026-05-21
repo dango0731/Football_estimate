@@ -11,6 +11,7 @@ struct HomeView: View {
     @State private var editingRosterPlayer: RosterPlayer? = nil
     @State private var showAddRosterSheet: Bool = false
     @State private var showFormula = false
+    @State private var matchToDelete: Match? = nil
 
     var body: some View {
         NavigationStack(path: $navPath) {
@@ -20,10 +21,24 @@ struct HomeView: View {
                     // ── ヘッダー ──
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("⚽️ SoccerRating").font(.largeTitle.weight(.black))
+                            Text(appState.currentTeam?.name ?? "SoccerRating")
+                                .font(.title2.weight(.black))
+                                .lineLimit(1)
                             Text("試合スタッツ管理").font(.subheadline).foregroundColor(.secondary)
                         }
                         Spacer()
+                        // チーム変更
+                        Button {
+                            appState.deselectTeam()
+                        } label: {
+                            Image(systemName: "arrow.left.circle.fill")
+                                .font(.title3.weight(.bold))
+                                .foregroundColor(.blue)
+                                .frame(width: 40, height: 40)
+                                .background(Color.blue.opacity(0.12))
+                                .clipShape(Circle())
+                        }
+                        // 評価式
                         Button { showFormula = true } label: {
                             Image(systemName: "function")
                                 .font(.title3.weight(.bold))
@@ -32,6 +47,7 @@ struct HomeView: View {
                                 .background(Color.purple.opacity(0.12))
                                 .clipShape(Circle())
                         }
+                        // 新規試合
                         Button { showNewMatch = true } label: {
                             Label("新しい試合", systemImage: "plus.circle.fill")
                                 .font(.headline.weight(.bold))
@@ -44,14 +60,9 @@ struct HomeView: View {
 
                     ScrollView {
                         VStack(spacing: 20) {
-                            // ── 選手ロスターセクション ──
                             rosterSection
-
-                            // ── 試合一覧セクション ──
                             matchListSection
-
-                            // ── 通算ランキングセクション ──
-                            seasonRankingSection
+                            seasonRankingCard
                         }
                         .padding(.bottom, 40)
                     }
@@ -73,6 +84,9 @@ struct HomeView: View {
                         .environmentObject(appState)
                 case .seasonStats(let rosterId):
                     SeasonStatsView(rosterId: rosterId)
+                        .environmentObject(appState)
+                case .seasonRanking:
+                    SeasonRankingView()
                         .environmentObject(appState)
                 }
             }
@@ -101,10 +115,27 @@ struct HomeView: View {
             .sheet(isPresented: $showFormula) {
                 FormulaView()
             }
+            .alert(
+                "試合を削除しますか？",
+                isPresented: Binding(
+                    get: { matchToDelete != nil },
+                    set: { if !$0 { matchToDelete = nil } }
+                )
+            ) {
+                Button("削除", role: .destructive) {
+                    if let m = matchToDelete { appState.deleteMatch(id: m.id) }
+                    matchToDelete = nil
+                }
+                Button("キャンセル", role: .cancel) { matchToDelete = nil }
+            } message: {
+                if let m = matchToDelete {
+                    Text("「vs \(m.opponent)」のデータをすべて削除します。この操作は元に戻せません。")
+                }
+            }
         }
     }
 
-    // ── ロスターセクション（ホーム上部） ──
+    // ── ロスターセクション ──
     private var rosterSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
@@ -130,7 +161,6 @@ struct HomeView: View {
             .padding(.horizontal, 20)
 
             if appState.roster.isEmpty {
-                // 空状態
                 HStack(spacing: 12) {
                     Image(systemName: "person.crop.circle.badge.plus")
                         .font(.system(size: 28))
@@ -156,14 +186,12 @@ struct HomeView: View {
                 )
                 .padding(.horizontal, 20)
             } else {
-                // 横スクロールチップ
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         ForEach(appState.sortedRoster) { rp in
                             RosterChip(player: rp)
                                 .onTapGesture { editingRosterPlayer = rp }
                         }
-                        // ＋追加ボタン
                         Button { showAddRosterSheet = true } label: {
                             VStack(spacing: 4) {
                                 ZStack {
@@ -233,7 +261,15 @@ struct HomeView: View {
                             }
                         } label: {
                             MatchRowCard(match: match)
-                        }.buttonStyle(.plain)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                matchToDelete = match
+                            } label: {
+                                Label("試合を削除", systemImage: "trash.fill")
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal, 20)
@@ -241,8 +277,8 @@ struct HomeView: View {
         }
     }
 
-    // ── 通算ランキングセクション ──
-    private var seasonRankingSection: some View {
+    // ── 通算ランキングカード（タップで画面遷移） ──
+    private var seasonRankingCard: some View {
         let stats = appState.allSeasonStats
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
@@ -254,6 +290,17 @@ struct HomeView: View {
                     .padding(.horizontal, 8).padding(.vertical, 2)
                     .background(Color.secondary.opacity(0.15)).clipShape(Capsule())
                 Spacer()
+                if !stats.isEmpty {
+                    Button {
+                        navPath.append(NavRoute.seasonRanking)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text("すべて見る").font(.caption.weight(.bold))
+                            Image(systemName: "chevron.right").font(.caption2.weight(.bold))
+                        }
+                        .foregroundColor(.purple)
+                    }
+                }
             }
             .padding(.horizontal, 20)
 
@@ -262,12 +309,35 @@ struct HomeView: View {
                     .font(.caption).foregroundColor(.secondary)
                     .padding(.horizontal, 20).padding(.vertical, 12)
             } else {
+                // 上位3名をプレビュー表示
                 LazyVStack(spacing: 8) {
-                    ForEach(Array(stats.enumerated()), id: \.element.rosterPlayer.id) { idx, s in
+                    ForEach(Array(stats.prefix(3).enumerated()), id: \.element.rosterPlayer.id) { idx, s in
                         Button {
                             navPath.append(NavRoute.seasonStats(s.rosterPlayer.id))
                         } label: {
                             SeasonRankRow(rank: idx + 1, stats: s)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if stats.count > 3 {
+                        Button {
+                            navPath.append(NavRoute.seasonRanking)
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Text("他 \(stats.count - 3) 名を見る")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundColor(.purple)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundColor(.purple)
+                                Spacer()
+                            }
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color.purple.opacity(0.08))
+                            )
                         }
                         .buttonStyle(.plain)
                     }
@@ -338,10 +408,15 @@ struct RosterChip: View {
                     ))
                     .frame(width: 50, height: 50)
                     .shadow(color: player.position.color.opacity(0.4), radius: 4, x: 0, y: 2)
-                Image(systemName: player.position.icon)
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(.white)
-                // ポジションバッジ
+                if let n = player.numberText {
+                    Text(n)
+                        .font(.system(size: 22, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                } else {
+                    Image(systemName: player.position.icon)
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.white)
+                }
                 VStack {
                     HStack {
                         Spacer()

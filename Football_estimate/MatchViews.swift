@@ -7,36 +7,90 @@ import SwiftUI
 struct MatchRowCard: View {
     let match: Match
     var avgRating: Double {
-        let s = match.players.filter{$0.isStarter}; guard !s.isEmpty else { return 0 }
-        return s.reduce(0.0){$0+$1.rating}/Double(s.count)
+        let s = match.players.filter { $0.isStarter || $0.totalMinutes > 0 }
+        guard !s.isEmpty else { return 0 }
+        return s.reduce(0.0) { $0 + $1.rating } / Double(s.count)
     }
+    private var resultColor: Color {
+        guard match.isFinished, let opp = match.opponentScore else { return .secondary }
+        if match.ourScore > opp { return .green }
+        if match.ourScore < opp { return .red }
+        return Color(red: 0.9, green: 0.75, blue: 0)
+    }
+    private var resultLabel: String {
+        guard let opp = match.opponentScore else { return "?" }
+        if match.ourScore > opp { return "WIN" }
+        if match.ourScore < opp { return "LOSE" }
+        return "DRAW"
+    }
+
     var body: some View {
-        HStack(spacing:16) {
-            RoundedRectangle(cornerRadius:4).fill(match.isFinished ? Color.green : Color.orange).frame(width:5)
-            VStack(alignment:.leading,spacing:6) {
-                HStack {
+        HStack(spacing: 14) {
+            RoundedRectangle(cornerRadius: 4)
+                .fill(match.isFinished ? resultColor : Color.orange)
+                .frame(width: 5)
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .center) {
                     Text("vs \(match.opponent)").font(.headline.weight(.bold))
                     Spacer()
-                    if match.isFinished && !match.players.isEmpty {
-                        Text(String(format:"平均 %.2f",avgRating)).font(.subheadline.weight(.semibold)).foregroundColor(ratingColor(avgRating))
+                    // スコア表示
+                    if match.isFinished {
+                        scoreBadge
                     }
                 }
-                HStack(spacing:8) {
+                HStack(spacing: 8) {
                     Text(match.dateString).font(.caption).foregroundColor(.secondary)
                     Text("·").foregroundColor(.secondary)
-                    Text("\(match.players.count)名").font(.caption).foregroundColor(.secondary)
+                    Text("\(match.players.filter { $0.isStarter || $0.totalMinutes > 0 }.count)名")
+                        .font(.caption).foregroundColor(.secondary)
                     Spacer()
-                    Text(match.isFinished ? "終了" : "進行中")
-                        .font(.caption.weight(.semibold)).padding(.horizontal,10).padding(.vertical,4)
-                        .background(match.isFinished ? Color.green.opacity(0.15) : Color.orange.opacity(0.15))
-                        .foregroundColor(match.isFinished ? .green : .orange).clipShape(Capsule())
+                    if match.isFinished {
+                        Text(String(format: "平均 %.2f", avgRating))
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(ratingColor(avgRating))
+                    } else {
+                        Text("進行中")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(Color.orange.opacity(0.15))
+                            .foregroundColor(.orange).clipShape(Capsule())
+                    }
                 }
             }
-            Image(systemName:"chevron.right").font(.caption.weight(.semibold)).foregroundColor(Color.secondary.opacity(0.4))
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundColor(Color.secondary.opacity(0.4))
         }
-        .padding(16).background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius:16,style:.continuous))
-        .shadow(color:.black.opacity(0.06),radius:8,x:0,y:3)
+        .padding(16)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 3)
+    }
+
+    @ViewBuilder
+    private var scoreBadge: some View {
+        HStack(spacing: 4) {
+            Text("\(match.ourScore)")
+                .font(.title3.weight(.black))
+                .foregroundColor(.primary)
+            Text("-")
+                .font(.title3.weight(.heavy))
+                .foregroundColor(.secondary)
+            Text(match.opponentScore.map { "\($0)" } ?? "?")
+                .font(.title3.weight(.black))
+                .foregroundColor(match.opponentScore == nil ? .secondary : .primary)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(resultColor.opacity(0.12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(resultColor.opacity(0.35), lineWidth: 1)
+        )
     }
 }
 

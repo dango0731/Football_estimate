@@ -226,6 +226,9 @@ struct Match: Identifiable, Codable {
     var opponent: String
     var players: [Player] = []
     var isFinished: Bool = false
+    var opponentScore: Int? = nil
+
+    var ourScore: Int { players.reduce(0) { $0 + $1.stats.goals } }
 
     // ── 試合進行 ──
     var phase: MatchPhase = .setup
@@ -313,4 +316,12 @@ struct PlayerSeasonStats {
     let avgRating: Double
     let ratings: [RatingEntry]
     let totals: PlayerStats
+}
+
+// ── チーム ──
+struct Team: Identifiable, Codable {
+    var id: UUID = UUID()
+    var name: String
+    var matches: [Match] = []
+    var roster: [RosterPlayer] = []
 }

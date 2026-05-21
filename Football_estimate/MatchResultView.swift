@@ -32,6 +32,12 @@ struct MatchResultView: View {
 
     var body: some View {
         List {
+            // ── スコアセクション ──
+            Section {
+                scoreInputRow
+                    .listRowBackground(Color(.secondarySystemBackground))
+            }
+
             Section {
                 VStack(spacing:10) {
                     Text("チーム平均レーティング").font(.subheadline).foregroundColor(.secondary)
@@ -103,6 +109,81 @@ struct MatchResultView: View {
                 }
             }
         }
+    }
+
+    // MARK: - スコア入力行
+    @ViewBuilder
+    private var scoreInputRow: some View {
+        let our = match.ourScore
+        let opp = match.opponentScore
+        let resultColor: Color = {
+            guard let o = opp else { return .secondary }
+            return our > o ? .green : our < o ? .red : Color(red: 0.9, green: 0.75, blue: 0)
+        }()
+        let resultText: String = {
+            guard let o = opp else { return "未入力" }
+            return our > o ? "WIN 🎉" : our < o ? "LOSE" : "DRAW"
+        }()
+
+        VStack(spacing: 12) {
+            // 勝敗ラベル
+            Text(resultText)
+                .font(.caption.weight(.bold))
+                .foregroundColor(resultColor)
+
+            // スコア表示
+            HStack(spacing: 0) {
+                // 自チーム（ゴール合計・読み取り専用）
+                VStack(spacing: 4) {
+                    Text("自チーム").font(.caption2).foregroundColor(.secondary)
+                    Text("\(our)")
+                        .font(.system(size: 52, weight: .black, design: .rounded))
+                        .foregroundColor(.primary)
+                }
+                .frame(maxWidth: .infinity)
+
+                Text("-")
+                    .font(.system(size: 40, weight: .heavy))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 8)
+
+                // 相手チーム（入力可能）
+                VStack(spacing: 4) {
+                    Text(match.opponent).font(.caption2).foregroundColor(.secondary).lineLimit(1)
+                    Text(opp.map { "\($0)" } ?? "?")
+                        .font(.system(size: 52, weight: .black, design: .rounded))
+                        .foregroundColor(opp == nil ? .secondary.opacity(0.4) : .primary)
+                }
+                .frame(maxWidth: .infinity)
+            }
+
+            // 相手スコア +/- ボタン
+            HStack(spacing: 16) {
+                Button {
+                    let current = match.opponentScore ?? 0
+                    appState.updateOpponentScore(matchId: matchId, score: current - 1)
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.system(size: 28))
+                        .foregroundColor((opp ?? 0) > 0 ? .red : .secondary.opacity(0.3))
+                }
+                .disabled((opp ?? 0) <= 0)
+
+                Text("相手スコアを入力")
+                    .font(.caption).foregroundColor(.secondary)
+
+                Button {
+                    let current = match.opponentScore ?? 0
+                    appState.updateOpponentScore(matchId: matchId, score: current + 1)
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 28))
+                        .foregroundColor(.blue)
+                }
+            }
+        }
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - CSV 生成

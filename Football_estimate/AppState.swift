@@ -6,46 +6,117 @@ import Combine
 // ============================================================
 
 class AppState: ObservableObject {
+    // バインディング互換のため matches / roster を @Published で保持
     @Published var matches: [Match] = [] {
-        didSet { guard !isLoading else { return }; saveMatches() }
+        didSet { guard !isLoading else { return }; syncToCurrentTeam(); saveTeams() }
     }
     @Published var roster: [RosterPlayer] = [] {
-        didSet { guard !isLoading else { return }; saveRoster() }
+        didSet { guard !isLoading else { return }; syncToCurrentTeam(); saveTeams() }
     }
 
+    @Published var teams: [Team] = []
+    @Published var currentTeamId: UUID? = nil
+
     private var isLoading = false
-    private let matchesKey = "saved_matches"
-    private let rosterKey  = "saved_roster"
+    private let teamsKey = "saved_teams_v2"
 
     init() {
-        let isFirstLaunch = UserDefaults.standard.data(forKey: rosterKey) == nil
         isLoading = true
-        load()
+        loadTeams()
         isLoading = false
-        if isFirstLaunch {
-            roster = AppState.sampleRoster()
+
+        if teams.isEmpty {
+            let sample = Team(name: "〇〇高校サッカー部",
+                              roster: AppState.sampleRoster())
+            teams.append(sample)
+            saveTeams()
         }
+    }
+
+    // MARK: - チーム選択
+    func selectTeam(_ id: UUID) {
+        guard let t = teams.first(where: { $0.id == id }) else { return }
+        isLoading = true
+        currentTeamId = id
+        matches = t.matches
+        roster  = t.roster
+        isLoading = false
+    }
+
+    func deselectTeam() {
+        isLoading = true
+        currentTeamId = nil
+        matches = []
+        roster  = []
+        isLoading = false
+    }
+
+    var currentTeam: Team? {
+        guard let id = currentTeamId else { return nil }
+        return teams.first(where: { $0.id == id })
+    }
+
+    // MARK: - チーム CRUD
+    func addTeam(_ t: Team) {
+        teams.append(t)
+        saveTeams()
+    }
+
+    func updateTeamName(id: UUID, name: String) {
+        if let i = teams.firstIndex(where: { $0.id == id }) {
+            teams[i].name = name
+            saveTeams()
+        }
+    }
+
+    func deleteTeam(id: UUID) {
+        if currentTeamId == id { deselectTeam() }
+        teams.removeAll { $0.id == id }
+        saveTeams()
     }
 
     // MARK: - 永続化
-    private func saveMatches() {
-        if let data = try? JSONEncoder().encode(matches) {
-            UserDefaults.standard.set(data, forKey: matchesKey)
+    private func syncToCurrentTeam() {
+        guard let id = currentTeamId,
+              let i = teams.firstIndex(where: { $0.id == id }) else { return }
+        teams[i].matches = matches
+        teams[i].roster  = roster
+    }
+
+    private func saveTeams() {
+        if let data = try? JSONEncoder().encode(teams) {
+            UserDefaults.standard.set(data, forKey: teamsKey)
         }
     }
-    private func saveRoster() {
-        if let data = try? JSONEncoder().encode(roster) {
-            UserDefaults.standard.set(data, forKey: rosterKey)
+
+    private func loadTeams() {
+        // v2 キーから読み込み
+        if let data = UserDefaults.standard.data(forKey: teamsKey),
+           let decoded = try? JSONDecoder().decode([Team].self, from: data) {
+            teams = decoded
+            return
         }
-    }
-    private func load() {
-        if let data = UserDefaults.standard.data(forKey: matchesKey),
+        // 旧キーからマイグレーション
+        let oldMatchesKey = "saved_matches"
+        let oldRosterKey  = "saved_roster"
+        var migratedMatches: [Match] = []
+        var migratedRoster: [RosterPlayer] = []
+        if let data = UserDefaults.standard.data(forKey: oldMatchesKey),
            let decoded = try? JSONDecoder().decode([Match].self, from: data) {
-            matches = decoded
+            migratedMatches = decoded
         }
-        if let data = UserDefaults.standard.data(forKey: rosterKey),
+        if let data = UserDefaults.standard.data(forKey: oldRosterKey),
            let decoded = try? JSONDecoder().decode([RosterPlayer].self, from: data) {
-            roster = decoded
+            migratedRoster = decoded
+        }
+        if !migratedMatches.isEmpty || !migratedRoster.isEmpty {
+            let migrated = Team(name: "マイチーム",
+                                matches: migratedMatches,
+                                roster: migratedRoster)
+            teams = [migrated]
+            saveTeams()
+            UserDefaults.standard.removeObject(forKey: oldMatchesKey)
+            UserDefaults.standard.removeObject(forKey: oldRosterKey)
         }
     }
 
@@ -70,33 +141,44 @@ class AppState: ObservableObject {
     static func sampleRoster() -> [RosterPlayer] {
         [
             // ── FW（4人） ──
-            RosterPlayer(name: "田中 翔",   position: .fw, height: "178", foot: .right),
-            RosterPlayer(name: "山田 蓮",   position: .fw, height: "175", foot: .left),
-            RosterPlayer(name: "鈴木 大輝", position: .fw, height: "182", foot: .right),
-            RosterPlayer(name: "高橋 颯",   position: .fw, height: "173", foot: .both),
+            RosterPlayer(name: "田中 翔",   number: 9,  position: .fw, height: "178", foot: .right),
+            RosterPlayer(name: "山田 蓮",   number: 11, position: .fw, height: "175", foot: .left),
+            RosterPlayer(name: "鈴木 大輝", number: 18, position: .fw, height: "182", foot: .right),
+            RosterPlayer(name: "高橋 颯",   number: 7,  position: .fw, height: "173", foot: .both),
             // ── MF（6人） ──
-            RosterPlayer(name: "佐藤 陸",   position: .mf, height: "172", foot: .right),
-            RosterPlayer(name: "中村 海斗", position: .mf, height: "170", foot: .left),
-            RosterPlayer(name: "伊藤 颯太", position: .mf, height: "174", foot: .right),
-            RosterPlayer(name: "渡辺 悠真", position: .mf, height: "168", foot: .both),
-            RosterPlayer(name: "小林 蒼",   position: .mf, height: "176", foot: .right),
-            RosterPlayer(name: "加藤 樹",   position: .mf, height: "171", foot: .left),
+            RosterPlayer(name: "佐藤 陸",   number: 8,  position: .mf, height: "172", foot: .right),
+            RosterPlayer(name: "中村 海斗", number: 10, position: .mf, height: "170", foot: .left),
+            RosterPlayer(name: "伊藤 颯太", number: 6,  position: .mf, height: "174", foot: .right),
+            RosterPlayer(name: "渡辺 悠真", number: 14, position: .mf, height: "168", foot: .both),
+            RosterPlayer(name: "小林 蒼",   number: 17, position: .mf, height: "176", foot: .right),
+            RosterPlayer(name: "加藤 樹",   number: 16, position: .mf, height: "171", foot: .left),
             // ── DF（5人） ──
-            RosterPlayer(name: "山本 健",   position: .df, height: "183", foot: .right),
-            RosterPlayer(name: "吉田 大樹", position: .df, height: "180", foot: .right),
-            RosterPlayer(name: "松本 涼",   position: .df, height: "178", foot: .left),
-            RosterPlayer(name: "井上 拓海", position: .df, height: "185", foot: .right),
-            RosterPlayer(name: "木村 隼人", position: .df, height: "177", foot: .both),
+            RosterPlayer(name: "山本 健",   number: 4,  position: .df, height: "183", foot: .right),
+            RosterPlayer(name: "吉田 大樹", number: 5,  position: .df, height: "180", foot: .right),
+            RosterPlayer(name: "松本 涼",   number: 3,  position: .df, height: "178", foot: .left),
+            RosterPlayer(name: "井上 拓海", number: 2,  position: .df, height: "185", foot: .right),
+            RosterPlayer(name: "木村 隼人", number: 15, position: .df, height: "177", foot: .both),
         ]
+    }
+
+    /// 相手スコアを手動編集。score=nil で手動値をクリア（失点記録から自動算出に戻す）
+    func updateOpponentScore(matchId: UUID, score: Int?) {
+        if let i = matches.firstIndex(where: { $0.id == matchId }) {
+            if let s = score {
+                matches[i].opponentScore = max(0, s)
+            } else {
+                matches[i].opponentScore = nil
+            }
+        }
     }
 
     // ── Match管理 ──
     func addMatch(_ m: Match) { matches.insert(m, at: 0) }
     func updateMatch(_ m: Match) { if let i = matches.firstIndex(where:{$0.id==m.id}) { matches[i]=m } }
     func finishMatch(_ id: UUID) { if let i = matches.firstIndex(where:{$0.id==id}) { matches[i].isFinished=true } }
+    func deleteMatch(id: UUID) { matches.removeAll { $0.id == id } }
 
     // ── 試合フェーズ遷移 ──
-    /// 前半開始：タイマー始動・現スタメン全員に開始時刻を打刻
     func startFirstHalf(matchId: UUID) {
         guard let mi = matches.firstIndex(where: { $0.id == matchId }) else { return }
         let now = Date()
@@ -107,7 +189,6 @@ class AppState: ObservableObject {
         }
     }
 
-    /// 前半終了：ピッチ上選手の出場分数を確定し、ハーフタイムへ
     func endFirstHalf(matchId: UUID) {
         guard let mi = matches.firstIndex(where: { $0.id == matchId }) else { return }
         let now = Date()
@@ -121,7 +202,6 @@ class AppState: ObservableObject {
         matches[mi].phase = .halfTime
     }
 
-    /// 後半開始：現スタメンに開始時刻を打刻
     func startSecondHalf(matchId: UUID) {
         guard let mi = matches.firstIndex(where: { $0.id == matchId }) else { return }
         let now = Date()
@@ -132,7 +212,6 @@ class AppState: ObservableObject {
         }
     }
 
-    /// 試合終了（後半終了）
     func endSecondHalf(matchId: UUID) {
         guard let mi = matches.firstIndex(where: { $0.id == matchId }) else { return }
         let now = Date()
@@ -147,18 +226,45 @@ class AppState: ObservableObject {
         matches[mi].isFinished = true
     }
 
-    // ── 選手交代（スタメンとベンチを入れ替え） ──
-    // OUT した選手は wasSubstituted=true になり、その試合では再投入不可。
-    // IN した選手は通常通り後で交代できる。
-    // 進行中フェーズなら出場時間を加算/打刻する。
+    // ── 失点イベントを記録（ピッチ上選手にパターン別ペナルティを自動適用） ──
+    func recordConcession(matchId: UUID,
+                          pattern: ConcessionPattern,
+                          primaryBlameId: UUID? = nil) {
+        guard let mi = matches.firstIndex(where: { $0.id == matchId }) else { return }
+        let phase = matches[mi].phase
+        let halfNumber: Int
+        switch phase {
+        case .firstHalf:  halfNumber = 1
+        case .halfTime:   halfNumber = 1   // ハーフタイム中の登録は前半扱い
+        case .secondHalf: halfNumber = 2
+        case .finished:   halfNumber = 2
+        default:          halfNumber = 1
+        }
+
+        // 失点時にピッチ上にいる選手を抽出（途中交代済み・退場済みは除外）
+        let onField = matches[mi].players.filter {
+            $0.isStarter && !$0.wasSubstituted
+        }
+        let onFieldIds = onField.map { $0.id }
+
+        // イベント記録のみ（評価式には影響させない方針）
+        let event = ConcessionEvent(
+            time: Date(),
+            halfNumber: halfNumber,
+            pattern: pattern,
+            primaryBlameId: primaryBlameId,
+            onFieldIds: onFieldIds
+        )
+        matches[mi].concessions.append(event)
+    }
+
+    // ── 選手交代 ──
     func substitutePlayer(matchId: UUID, outId: UUID, inId: UUID) {
         guard let mi = matches.firstIndex(where: { $0.id == matchId }) else { return }
         let now = Date()
         let phase = matches[mi].phase
 
-        // OUT 側
         if let oi = matches[mi].players.firstIndex(where: { $0.id == outId }) {
-            // 進行中なら出場時間を確定
             if let s = matches[mi].players[oi].lastFieldEnterAt {
                 let mins = max(0, now.timeIntervalSince(s) / 60.0)
                 if phase == .firstHalf {
@@ -172,10 +278,8 @@ class AppState: ObservableObject {
             matches[mi].players[oi].wasSubstituted = true
         }
 
-        // IN 側
         if let ii = matches[mi].players.firstIndex(where: { $0.id == inId }) {
             matches[mi].players[ii].isStarter = true
-            // 進行中なら開始時刻を打刻
             if phase.isPlaying {
                 matches[mi].players[ii].lastFieldEnterAt = now
             }
@@ -213,7 +317,7 @@ class AppState: ObservableObject {
               .sorted { $0.avgRating > $1.avgRating }
     }
 
-    // ── Roster管理（スナップショット方式：既存試合には影響しない） ──
+    // ── Roster管理 ──
     func addRosterPlayer(_ p: RosterPlayer) { roster.append(p) }
     func updateRosterPlayer(_ p: RosterPlayer) {
         if let i = roster.firstIndex(where: { $0.id == p.id }) { roster[i] = p }
@@ -221,7 +325,6 @@ class AppState: ObservableObject {
     func deleteRosterPlayer(id: UUID) {
         roster.removeAll { $0.id == id }
     }
-    // ポジション順・名前順でソート
     var sortedRoster: [RosterPlayer] {
         roster.sorted { a, b in
             if a.position.rawValue != b.position.rawValue { return a.position.rawValue < b.position.rawValue }

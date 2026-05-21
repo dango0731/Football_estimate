@@ -6,7 +6,14 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var appState = AppState()
-    var body: some View { HomeView().environmentObject(appState) }
+
+    var body: some View {
+        if appState.currentTeamId == nil {
+            TeamListView().environmentObject(appState)
+        } else {
+            HomeView().environmentObject(appState)
+        }
+    }
 }
 
 // ============================================================
@@ -19,6 +26,7 @@ enum NavRoute: Hashable {
     case result(UUID)           // 試合結果画面
     case rosterManagement       // ロスター管理画面
     case seasonStats(UUID)      // 選手通算スタッツ（rosterId）
+    case seasonRanking          // 通算ランキング画面
 }
 
 // ============================================================
